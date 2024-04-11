@@ -5,11 +5,11 @@ require(ggplot2)
 require(intervals)
 require(stringr)
 
-n <- "01"
+n <- "15"
 strategy <- "rolling"
 
 #import
-dat <- read.asc(paste0("/Users/ali/Desktop/Experiment/sub",n,"/sub",n,"-",strategy,"-test.asc"))
+dat <- read.asc(paste0("/Volumes/Effort_data/subs/sub",n,"/sub",n,"-",strategy,"-test.asc"))
 
 # Combine the lists into one data frame
 dfp <- data.frame(time = dat$raw$time, pupil_size = dat$raw$ps)
@@ -92,7 +92,7 @@ for (i in 1:nrow(df_grouped)) {
   }
 }
 
-# ------------------------saveing the preprocessed data
-write.csv(df_grouped, paste0("/Users/ali/Desktop/Experiment/sub",n,"/sub",n,"-",strategy,"-test-pupil.csv" ))
+# ------------------------saving the preprocessed data
+write.csv(df_grouped, paste0("/Volumes/Effort_data/subs/sub",n,"/sub",n,"-",strategy,"-test-pupil.csv" ))
 
 
