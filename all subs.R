@@ -1,11 +1,12 @@
-#importing the reposonses cleaned by python code with the same name
+#modules------
 library(readr)
 library("readxl")
-library(ggrepel)
 require(ggplot2)
+library(ggrepel)
 library(investr)
 library(dplyr)
 library(ggpubr)
+library(purrr)
 library(lmerTest)
 library(ggpmisc)
 library(kableExtra)
@@ -16,121 +17,341 @@ library(knitr)
 library(plotly)
 library(gridExtra)
 
-write.csv(dfa, paste0("/Users/ali/Desktop/Experiment/allsubs-nback-test.csv"))
-# if you already combined and just want to load agian
-dfa <- read_csv(paste0("/Users/ali/Desktop/Experiment/allsubs-nback-test.csv"))
-#------------------------------------------------------------
-# Prepare a vector of subject numbers
-subjects <- sprintf("%02d", 1:4)  # This will create "01", "02", "03", "04", "05"
-#subjects <- c("01", "03", "04", "05","07","05")
 
-subjects <- subjects[subjects != "05"] # doesn't have p3
+minmax_normalize <- function(x) {
+  (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
+}
 
-#task <- "n_back"
-#task <- "ax_cpt"
+# save the final dfa-test-cleaned.csv
+#write.csv(dfa, paste0("/Volumes/x9/INITIAL_DATABASE/dfa-test.csv")) #dfa-test-norepetition
+#write.csv(dfa, paste0("/Users/ali/Desktop/Experiment/dfa-test.csv"))
+# if you already combined and just want to load again
+dfa <- read_csv(paste0("/Users/ali/Desktop/Experiment/dfa-test.csv"))
 
-# Map each subject to a strategy
-strategies <- c("rolling", "rolling", "rolling", "static", "static", "rolling", "static")
-#strategies <- c("proactive", "proactive", "proactive", "reactive","reactive","proactive","reactive")
+
+# if you want only to see one relation
+ggplot(subset(dfa,n_back>0), aes(x =alpha , y = g)) +
+  geom_point(alpha = 0.1) +
+  #stat_smooth(aes(group = sub), method = "lm", formula = y ~ poly(x, 1),col = 'blue', se = FALSE) +
+  stat_smooth(aes(), method = "lm", formula = y ~ poly(x, 1), se = TRUE) +
+  theme_minimal() +facet_wrap(~strategy, scales = "fixed") 
+#import -----------------------------------------------------------------------------------
+
+indir <- "/Volumes/x9/INITIAL_DATABASE/"
+
+sub_list <- read_csv("/Users/ali/Desktop/Experiment/check_list.csv")
+rows_to_remove <- c(1, 2, 3, 4, 5, 6, 10, 19, 20,  32, 33, 34, 45, 46, 53, 54) #bad files
+sub_list <- sub_list[-rows_to_remove, ]
+sub_list <- sub_list[!is.na(sub_list$sub), ]
 
 # Initialize an empty list to store data frames
 df_list <- list()
 
-# Loop through each subject and strategy
-for(n in subjects) {
+# Loop through the data
+for (isub in 1:nrow(sub_list)) {
 
-  file_path <- paste0("/Volumes/Effort_data/subs/sub", n, "/sub", n, "-", strategies[as.integer(n)], "-test.csv")
-  df <- read_csv(file_path)
+  sub <- sub_list$sub[isub]
+  strategy <- sub_list$strategy[isub]
   
-  # pac of specific channel to pac alone
-  #columns_to_rename <- grep("^pac_", names(df))
-  #names(df)[columns_to_rename] <- "pac"
+  df <- read_csv(paste0(indir,sub,"/",sub,"-",strategy,"-test.csv"))
   
+  
+  # in case this subject didn't have something....
+  if (!"pac" %in% names(df)) {df$pac <- NA}
+  if (!"ps_bs" %in% names(df)) {df$ps_bs <- NA}
+  if (!"ps" %in% names(df)) {df$ps <- NA}
+  if (!"microsacc" %in% names(df)) {df$microsacc <- NA}
+  if (!"magnitude" %in% names(df)) {df$magnitude <- NA}
+  if (!"dps" %in% names(df)) {df$dps <- NA}
+  if (!"gamma" %in% names(df)) {df$gamma <- NA}
+  if (!"beta" %in% names(df)) {df$beta <- NA}
+  if (!"alpha" %in% names(df)) {df$alpha <- NA}
+  if (!"theta" %in% names(df)) {df$theta <- NA}
+  if (!"onef" %in% names(df)) {df$onef <- NA}
+  if (!"p3" %in% names(df)) {df$p3 <- NA}
+  if (!"p2" %in% names(df)) {df$p2 <- NA}
+  if (!"n2" %in% names(df)) {df$n2 <- NA}
+  if (!"pac1" %in% names(df)) {df$pac1 <- NA}
+  if (!"pac2" %in% names(df)) {df$pac2 <- NA}
+  if (!"ps1" %in% names(df)) {df$ps1 <- NA}
+  if (!"ps2" %in% names(df)) {df$ps2 <- NA}
+  if (!"ms1" %in% names(df)) {df$ms1 <- NA}
+  if (!"ms2" %in% names(df)) {df$ms2 <- NA}
+  
+  #normlizing pupil
+  df$ps_norm <- minmax_normalize(df$ps)
+  df$ms_norm <- minmax_normalize(df$microsacc)
+  df$mg_norm <- minmax_normalize(df$magnitude)
+  df$p3_norm <- minmax_normalize(df$p3)
+  df$p2_norm <- minmax_normalize(df$p2)
+  df$n2_norm <- minmax_normalize(df$n2)
+  df$pac1_norm <- minmax_normalize(df$pac1)
+  df$pac2_norm <- minmax_normalize(df$pac2)
+  
+  # how much this subject take time to finish the task
+  df$total_n_block <- max(df$n_block)+1
+  
+  
+  #define task
+  df$task <- ifelse(strategy %in% c("rolling", "static"), "n-back", "ax-cpt")
   # Normalizing and adding 'sub' and 'strategy' columns
-  df <- df %>% mutate(ps_norm = scale(ps),
-                      theta_norm = scale(theta),
-                      beta_norm = scale(beta),
-                      gamma_norm = scale(gamma),
-                      alpha_norm = scale(alpha),
-                      pac_norm = scale(pac_lang),
-                      p3_norm = scale(p3),
-                      effort_category = ifelse(effort < median(effort), "low effort", "high effort"),
-                      sub = paste0("sub", n),
-                      strategy = strategies[as.integer(n)])
+  df <- df %>% mutate(
+                      sub = sub,
+                      sex = sub_list$sex[isub],
+                      age = sub_list$age[isub],
+                      dO = sub_list$dominancO[isub],
+                      wc = sub_list$workingcapacity[isub],
+                      bc = sub_list$besoincogni[isub],
+                      strategy = strategy
+                      )
   
-
+  # lagging
+  df$lagged_score <- lag(df$score, 1)
+  df$lagged_valence <- lag(df$slider_valenc.response, 1)
+  df$lagged_effort <- lag(df$slider_effort.response, 1)
+  df$lagged_p2 <- lag(df$p2, 1)
+  df$lagged_p3 <- lag(df$p3, 1)
+  df$lagged_n2 <- lag(df$n2, 1)
   
   # Add the processed data frame to the list
-  df_list[[n]] <- df
+  df_list[[isub]] <- df
 }
 
 # Combine all data frames into one
-dfa <- bind_rows(lapply(df_list, select,'gamma','gamma_norm','pac_lang','pac_norm','beta','beta_norm','m_correct','theta','theta_norm','alpha','alpha_norm','p3','p3_norm','psd','tpac','slider_valenc.response','effort_category','slider_arous.response','slider_effort.response','slider_time.response','n_block','ps','dps','dprime','g','sub', 'ps_norm','strategy', 'effort','n_back', 'arousal','valence','rt_h','rt_f','time','score','DifficultyLevel'))
-#dfa <- bind_rows(lapply(df_list, select,'DifficultyLevel','p3','dps','m_correct','slider_valenc.response','effort_category','slider_arous.response','slider_effort.response','slider_time.response','n_block','ps','dps','dprime','g','sub', 'pupil_norm','strategy', 'effort','n_back', 'arousal','valence','rt_h','rt_f','time','score'))
+dfa <- bind_rows(lapply(df_list, select,'sub','sex','age','wc','bc','dO','task','strategy','total_n_block',
+                        'n_block','n_back','m_correct','DifficultyLevel','dprime','g','score','false_alarm','hit','correct_rejection','miss',
+                        'lagged_score','lagged_valence','lagged_effort','lagged_p2','lagged_p3','lagged_n2',
+                        'p3','n2','p2','pac1','pac2','ps1','ps2','ms1','ms2',
+                        'p3_norm','n2_norm','p2_norm','pac1_norm','pac2_norm',
+                        'ps_bs','ps','ps_norm','dps','microsacc','magnitude','mg_norm','ms_norm','effort', 'arousal','valence','time','rt_h','rt_f',
+                        'slider_valenc.response','effort_category','valence_category','arousal_category','performance_category',
+                        'slider_arous.response','slider_effort.response','slider_time.response',
+                        'gamma','pac','beta','theta','alpha','onef'
+                        ))
 
-# Remove rows where m_correct > score
-dfa <- dfa[dfa$m_correct <= dfa$score, ]
+dfa$delta_ps_ms <- dfa$ps_norm-dfa$ms_norm 
+dfa$theta_beta <- dfa$theta / dfa$beta
+dfa$delta_pac <- dfa$pac2 - dfa$pac1
+dfa$delta_ms <- dfa$ms2 - dfa$ms1
+dfa$delta_ps <- dfa$ps2 - dfa$ps1
 
-# weighted performance
-dfa$wg <- dfa$g * dfa$n_back
-
-
-# Iterate through each column of dfa
-for (col in names(dfa)) {
-  # Check if the column is numeric
-  if (is.numeric(dfa[[col]])) {
-    # Replace outliers with NA for the current column
-    dfa[[col]][abs(scale(dfa[[col]])) >= 3] <- NA
+na1 <- sum(is.na(dfa))
+repeat {
+  # Initialize a variable to track if NAs were added
+  previous_na_count <- sum(is.na(dfa))
+  
+  # Iterate through each column of dfa
+  for (col in names(dfa)) {
+    # Check if the column is numeric
+    if (is.numeric(dfa[[col]])) {
+      # Replace outliers with NA for the current column
+      dfa[[col]][abs(scale(dfa[[col]])) >= 3] <- NA
+    }
+  }
+  
+  # Check if no more NAs were added
+  current_na_count <- sum(is.na(dfa))
+  
+  # Exit the loop if no new NAs were added
+  if (current_na_count == previous_na_count) {
+    break
   }
 }
 
-dfa$pac_lang[(dfa$pac_lang > 0.3) & (dfa$sub == "sub02" | dfa$sub == "sub04")] <- NA
+na2 <- sum(is.na(dfa))
 
-#removing sub01 because he see the feedback and then rated effort
-#dfa <- subset(dfa, sub != "sub01")
-# ----------------------------------------------------------
-# in some models lmer asks to scale these variables..
-#dfa$tpac <- scale(dfa$tpac)
-#dfa$theta <- scale(dfa$theta)
-#dfa$alpha <- scale(dfa$alpha)
-#------------------------------------ modeling!
-model1 <- lmer(slider_effort.response ~ poly(n_back:strategy,2) + (1|sub), dfa, REML = FALSE)
-model2 <- lmer(g ~ tpac + (1|sub), dfa, REML = FALSE)
-summary(model2)
+print((na2 - na1)/(nrow(dfa)*ncol(dfa)))
 
-anova(model1, model2)
+hist(dfa$microsacc, ylab="Frequency", col="blue", border="black")
+
+dfa$recording <- interaction(sub,strategy)
+
+mother_dfa <- dfa
+
+# Remove rows where m_correct > score
+#dfa <- dfa[dfa$m_correct <= dfa$score, ]
+
+#modeling ------------------------------------ 
+
+##n_back-----
+model <- lmer(slider_valenc.response ~ 0 + factor(n_back)  + (1|sub), subset(dfa,strategy == 'rolling'))
+AIC(model)
+summary(model)
+model <- lmer(slider_valenc.response ~ 0 + factor(n_back)  + (1|sub), subset(dfa,strategy == 'static'))
+AIC(model)
+summary(model)
+
+##reinforcment learning of performance and valence----
+dfa <- mother_dfa
+dfa <- subset(dfa, strategy == 'rolling')
+#dfa <- subset(dfa, n_back == 3)
+# Step 1: Estimate y(t) using a mixed-effects model
+model_p_mixed <- lmer(score ~ slider_effort.response + (1 | sub), data = dfa[-nrow(dfa), ])
+# Step 2: Predict p(t) using the mixed-effects model
+dfa$p_estimated <- predict(model_p_mixed, dfa)
+# Step 3: Compute the difference v(t+1) - v(t) and (y(t) - v(t))
+dfa$delta_v <- dfa$slider_valenc.response - dfa$lagged_valence  # v(t) - v(t-1)
+dfa$delta_e <- dfa$slider_effort.response - dfa$lagged_effort
+dfa$delta_pv <- dfa$p_estimated - dfa$score  # y(t) - s(t-1)
+dfa$delta_p <- dfa$score - dfa$lagged_score  # s(t) - s(t-1)
+dfa$delta_sp <- dfa$score - dfa$p_estimated  # s(t) - y(t)
+dfa$delta_sv <- dfa$score - dfa$slider_valenc.response  # s(t) - y(t)
+dfa$delta_p3 <- dfa$p3 - dfa$lagged_p3
+dfa$delta_n2 <- dfa$n2 - dfa$lagged_n2
+
+# Step 5: explaining RewP
+model<- lmer(  p2 ~ 0 + strategy + I(delta_p - delta_v)  + (1 | sub), data = dfa[-nrow(dfa), ])
+AIC(model)
+summary(model)
+
+model<- lmer( slider_valenc.response ~ score + (1 | sub), data = dfa[-nrow(dfa), ])
+AIC(model)
+summary(model)
 
 
-# impact of score on valence
-#detrending valence
-dfa$valence_dt <- dfa$slider_valenc.response - lm(slider_valenc.response ~ n_block, data = dfa)$fitted.values
-# mixed model to see the impact of score
-model_valence <- lmer(lead(valence_dt, 0) ~ score * n_back + (1|sub), data = subset(dfa,n_back <4))
-summary(model_valence)
+# relationship between phase amplitude coupling and micro-saccade 
+dfa <- mother_dfa
+dfa <- subset(dfa, task == 'n-back')
 
-# let's visulize
-# Obtain residuals
-residuals <- resid(model_valence)
-
-# Create a residual plot
-residual_plot <- ggplot(data.frame(residuals), aes(x = fitted(model), y = residuals)) +
-  geom_point() +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
-  xlab("Fitted values") +
-  ylab("Residuals") +
-  ggtitle("Residual Plot")
-
-# Create a QQ plot
-qq_plot <- qqnorm(residuals, main = "QQ Plot of Residuals")
-qq_line <- qqline(residuals, col = "red")
+dfa <- subset(dfa, n_back > 1)
 
 
-summary(lm(effort ~ ps_norm  , dfa))
+summary(lmer(delta_pac ~ delta_ms + n_block + (1|sub), dfa))
+summary(lmer(slider_effort.response ~ delta_pac + (1|sub), dfa))
+summary(lmer(ps ~ microsacc + (1|sub), dfa))
 
-# model for effort and performance
-summary(lmer(dprime ~ slider_effort.response + strategy + n_back + (1|sub), dfa, REML= TRUE))
-#------------------------------------------------------------
-#------------------------------------ Kernel density of parameters
+# higher pac1 faster response time
+summary(lmer( rt_h ~ 0 + strategy + pac1 + (1|sub), dfa))
+
+
+##phenomenology-----
+dfa <- mother_dfa
+dfa <- dfa[!is.na(dfa$lagged_score), ]
+
+dfa$valence_dt <- dfa$slider_valenc.response - lm(slider_valenc.response ~ 0 +  n_block + score  + lagged_score  , data = dfa)$fitted.values
+dfa$arousal_dt <- dfa$slider_arous.response - lm(slider_arous.response ~ 0 + n_block + score + lagged_score , data = dfa)$fitted.values
+dfa$effort_dt <- dfa$slider_effort.response - lm(slider_effort.response ~ 0 + n_block + score  + lagged_score , data = dfa)$fitted.values
+
+model <- lmer(valence_dt ~ slider_effort.response + (1|sub), dfa)
+AIC(model)
+summary_output <- summary(model)
+
+model <- lmer(arousal_dt ~ slider_effort.response + (1|sub), dfa)
+AIC(model)
+summary_output <- summary(model)
+
+model <- lmer(effort_dt ~  arousal_dt + (1|sub), dfa)
+AIC(model)
+summary_output <- summary(model)
+
+##Table for pacs -----
+model1 <- lmer(pac1  ~ 0  + strategy  + (1|sub), data = subset(dfa,n_back==1))
+model2 <- lmer(pac1 ~ 0 + strategy   + (1|sub), data = subset(dfa,n_back==2))
+model3 <- lmer(pac1 ~ 0 + strategy  + (1|sub), data = subset(dfa,n_back==3))
+model4 <- lmer(pac2  ~ 0  + strategy  + (1|sub), data = subset(dfa,n_back==1))
+model5 <- lmer(pac2 ~ 0 + strategy   + (1|sub), data = subset(dfa,n_back==2))
+model6 <- lmer(pac2 ~ 0 + strategy  + (1|sub), data = subset(dfa,n_back==3))
+
+
+models <- list( model1,model2,model3,model4,model5,model6)
+model_names <- c('1 t1','2 t1','3 t1','1 t2','2 t2','3 t2')
+
+visu_lmr_combined(models,model_names)
+
+model <- lmer(dprime ~ 0 + strategy + (1|sub), dfa)
+AIC(model)
+summary(model)
+
+## performance-----
+dfa_rolling <- subset(dfa,strategy=='rolling')
+summary_output <- summary(lmer( g  ~  slider_effort.response + (1|sub), subset(dfa_rolling,n_back ==3)))
+summary_output <- summary(lmer( g  ~  slider_effort.response + (1|sub), subset(dfa_rolling,n_back ==2)))
+summary_output <- summary(lmer( g  ~  slider_effort.response + (1|sub), subset(dfa_rolling,n_back ==1)))
+
+
+dfa_static <- subset(dfa,strategy=='proactive')
+summary_output <- summary(lmer( g  ~  slider_effort.response + (1|sub), subset(dfa_static,n_back ==3)))
+summary_output <- summary(lmer( g  ~  slider_effort.response + (1|sub), subset(dfa_static,n_back ==2)))
+summary_output <- summary(lmer( g  ~  slider_effort.response + (1|sub), subset(dfa_static,n_back ==1)))
+
+
+summary_output <- summary(lmer( g  ~  slider_effort.response + (1|sub), subset(dfa,strategy=='proactive')))
+summary_output <- summary(lmer( g  ~  slider_effort.response + (1|sub), subset(dfa,strategy=='reactive')))
+
+##p3----
+
+model <- lmer( slider_effort.response ~  p3+ (1|sub), dfa)
+AIC(model)
+
+summary_output <- summary(model)
+
+##n2----
+model <- lmer( slider_effort.response ~ n2  + (1|sub), dfa)
+AIC(model)
+
+model <- lmer( g ~ n2 + (1|sub), dfa)
+AIC(model)
+
+summary(model)
+summary_output <- summary(model)
+
+##ps----
+model <- lmer(slider_effort.response ~ ps  + (1|sub), dfa)
+AIC(model)
+summary_output <- summary(model)
+summary(lmer( ps1  ~  slider_effort.response + (1|sub), dfa)) #positive
+summary(lmer( ps2  ~  slider_effort.response + (1|sub), dfa)) #positive
+summary(lmer( delta_ps  ~  slider_effort.response + (1|sub), dfa)) #negative
+
+##ms----
+summary(lmer(  slider_effort.response ~ microsacc  + (1|sub), dfa)) #negative
+summary(lmer( ms1 ~  slider_effort.response + (1|sub), dfa)) #positive
+summary(lmer( ms2 ~  slider_effort.response + (1|sub), dfa)) #positive
+
+summary(lmer( delta_ms ~  ps + (1|sub), dfa)) #positive (delta_ms > 0)
+
+##pac----
+summary(lmer( pac1 ~  slider_effort.response + (1|sub), dfa)) #negative
+summary(lmer( pac2 ~  slider_effort.response + (1|sub), dfa)) #negative
+summary(lmer( delta_pac ~  slider_effort.response + (1|sub), dfa)) #positive
+
+## delta_pac vs ps-----
+dfa <- mother_dfa
+
+summary(lmer( delta_pac ~ 0 +strategy +  ps_norm + (1|sub), dfa))
+
+## pac vs ms-----
+dfa <- mother_dfa
+
+summary(lmer( delta_pac ~  microsacc + (1|sub), dfa)) 
+#microsacc for some reason has positive relation with effort as well
+#even though ms1 and ms2 have different releation
+
+summary(lmer( pac1 ~ ms1 + ms2 + (1|sub), dfa))
+summary(lmer( pac2 ~ ms1 + ms2 + (1|sub), dfa)) #negative ms1 positive ms2
+
+summary(lmer( ms1 ~ pac1 + pac2 + (1|sub), dfa))
+summary(lmer( ms2 ~ pac1 + pac2  + (1|sub), dfa))
+
+summary(lmer( delta_ms ~ 0 + strategy + delta_pac + (1|sub), dfa))
+
+##frequencies-----
+summary(lmer(  slider_effort.response ~ alpha  + (1|sub), dfa))
+summary(lmer(  slider_effort.response ~ theta  + (1|sub), dfa))
+summary(lmer(  slider_effort.response ~ beta  + (1|sub), dfa))
+summary(lmer(  slider_effort.response ~ I(theta/beta)  + (1|sub), dfa))
+summary(lmer(  slider_effort.response ~ onef  + (1|sub), dfa))
+
+##working memory capacity------
+summary(lm( g ~ bc + wc + slider_effort.response, subset(dfa,task == 'n-back')))
+
+## time -------
+summary(lmer( slider_time.response ~  ms1 + ms2 + (1|sub), dfa))
+summary(lmer( slider_time.response ~ 0 + delta_pac*delta_ms + strategy + (1|sub), dfa))
+
+## response time ------
+summary(lmer( rt_h ~ delta_pac*delta_ms + (1|sub), dfa))
+#Kernel density of parameters------------------------------------ 
 
 # --------------- don't forget to change the strategy!!!
 
@@ -138,7 +359,7 @@ dfa_long <- tidyr::gather(dfa, key = "variable", value = "value",
                           slider_valenc.response, slider_arous.response, 
                           slider_effort.response, slider_time.response)
 
-s <- "proactive"
+s <- "reactive"
 gg <- ggplot(subset(dfa_long,strategy == s), aes(x = value, fill = variable))
 gg <- gg + geom_density(alpha = 0.5)
 gg <- gg + xlim(0, 100)
@@ -148,7 +369,7 @@ gg <- gg + labs(title = paste0("Kernel Density Estimates ",s),
                 x = "Value",
                 y = "Density")
 print(gg)
-ggsave(paste0("/Volumes/Effort_data/subs/figure/density_",task,"_",s,".png"), plot = gg, width = 10, height = 6, dpi = 300)
+ggsave(paste0("/Volumes/x9/results/allsubs/figure/density_",s,".png"), plot = gg, width = 10, height = 6, dpi = 300)
 
 # Kernel density of visual scale analogs after normalization
 dfa_long <- tidyr::gather(dfa, key = "variable", value = "value", 
@@ -165,92 +386,80 @@ gg <- gg + labs(title = paste0("Kernel Density Estimates ",s),
                 x = "Value",
                 y = "Density")
 print(gg)
-ggsave(paste0("/Volumes/Effort_data/subs/figure/density_",task,"_",s,"_minmaxed.png"), plot = gg, width = 10, height = 6, dpi = 300)
+ggsave(paste0("/Volumes/x9/results/allsubs/figure/density_",s,"_minmaxed.png"), plot = gg, width = 10, height = 6, dpi = 300)
 
-#------------------------------------------------------------
-# --------------------------- n_back vs y by sub
 
-y_values <- c("effort", "dprime", "score", "pupil_norm","tpac","alpha","theta")
-y_values <- c("theta","alpha","tpac")
+#n_back --------------------------- 
+dfa$valence_dt <- dfa$slider_valenc.response - lm(slider_valenc.response ~  0 + n_block + score  , data = dfa)$fitted.values
+dfa$valence_dt <-minmax_normalize(dfa$valence_dt)
 
+y_values <- c('microsacc','ps_norm','ms_norm','delta_ps_ms','theta','alpha','beta','theta_beta','gamma','pac1','pac2','diff_pac','p3','p3_norm','p2','p2_norm','n2','n2_norm','time',"effort","valence", "dprime",'g','rt_h','ps1','ps2','ms1','ms2','pac1','pac2','delta_ps','delta_ms','delta_pac')
+
+y_values <- c('valence_dt')
 # Loop over each y value
 for (y in y_values) {
   # Create the plot
-  plot <- ggplot(dfa, aes(x = n_back, y = .data[[y]])) +
-    geom_point(alpha = 0.8) +
-    stat_smooth(method = "lm", se = TRUE, formula = y ~ poly(x, 2)) +
-    geom_violin(aes(group = n_back, fill = sub), alpha = 0.5) +
-    facet_wrap(~sub, scales = "free") +
+  # Calculate means and standard errors
+  dfa_summary <- dfa %>%
+    group_by(n_back, strategy, task) %>%
+    summarise(
+      mean_y = mean(.data[[y]], na.rm = TRUE),
+      se_y = sd(.data[[y]], na.rm = TRUE) / sqrt(n())
+    ) %>%
+    ungroup()
+  
+  # Plot with error bars and connecting lines
+  plot <- ggplot(dfa_summary, aes(x = n_back, y = mean_y, color = strategy)) +
+    geom_errorbar(aes(ymin = mean_y - se_y, ymax = mean_y + se_y), width = 0.2) +
+    geom_line(aes(group = strategy), size = 1) +
+    facet_wrap(~task) +
     labs(
       title = paste("Difficulty and", y),
       x = "Qualitative Difficulty Level",
       y = y
+    ) +
+    theme_minimal() +
+    scale_x_continuous(breaks = c(1, 2, 3)) +  # Only show 1, 2, 3 on the x-axis
+    theme(
+      panel.grid.major.x = element_line(color = "grey80"),  # Remove existing vertical grid lines
+      panel.grid.minor.x = element_blank(),  # Remove minor vertical grid lines
+      panel.grid.major.y = element_blank(),  # Keep horizontal grid lines
+      axis.ticks.x = element_line(color = "black"),  # Add x-axis ticks
+      axis.ticks.length = unit(5, "pt")  # Customize tick length if desired
     )
+  
   # Fit linear model
-  lm_model <- lm(data = dfa, formula = as.formula(paste(y, "~ poly(n_back, 2)")))
+  #lm_model <- lm(data = dfa, formula = as.formula(paste(y, "~ poly(n_back, 2)")))
   
   # Extract p-value
-  p_value <- summary(lm_model)$coefficients["poly(n_back, 2)1", "Pr(>|t|)"]
+  #p_value <- summary(lm_model)$coefficients["poly(n_back, 2)1", "Pr(>|t|)"]
   
   # Add caption
-  plot <- plot + labs(caption = paste("p-value total: ", round(p_value,3)))
+  #plot <- plot + labs(caption = paste("p-value total: ", round(p_value,3)))
   print(plot)
   
-  file_path <- file.path("/Volumes/Effort_data/subs/figure/", paste(task,"_n_back_", y, "by sub.png", sep = ""))
-  ggsave(filename = file_path, plot = plot, width = 10, height = 6, dpi = 300)
-}
-
-# --------------------------- n_back vs y by strategy
-y_values <- c("theta_norm","alpha_norm","tpac_norm")
-# Loop over each y value
-for (y in y_values) {
-  # Create the plot
-  plot <- ggplot(dfa, aes(x = n_back, y = .data[[y]])) +
-    geom_point(alpha = 0.8) +
-    stat_smooth(method = "lm", se = TRUE, formula = y ~ poly(x, 1)) +
-    geom_violin(aes(group = n_back, fill = strategy), alpha = 0.5) +
-    facet_wrap(~strategy) +
-    labs(
-      title = paste("Difficulty and", y),
-      x = "Qualitative Difficulty Level",
-      y = y
-    )
-  
-  # Fit linear model for rolling strategy
-  lm_model_rolling <- lm(data = subset(dfa, strategy == 'rolling'), formula = as.formula(paste(y, "~ poly(n_back, 1)")))
-  p_value_rolling <- summary(lm_model_rolling)$coefficients["poly(n_back, 1)", "Pr(>|t|)"]
-  
-  # Fit linear model for static strategy
-  lm_model_static <- lm(data = subset(dfa, strategy == 'static'), formula = as.formula(paste(y, "~ poly(n_back, 1)")))
-  p_value_static <- summary(lm_model_static)$coefficients["poly(n_back, 1)", "Pr(>|t|)"]
-  
-  # Add caption
-  plot <- plot + labs(caption = paste("p-value rolling: ", round(p_value_rolling, 3), " p-value static: ", round(p_value_static, 3)))
-  
-  print(plot)
-  
-  file_path <- file.path("/Volumes/Effort_data/subs/figure/", paste(task, "_n_back_", y, "by_strategy.png", sep = ""))
-  ggsave(filename = file_path, plot = plot, width = 10, height = 6, dpi = 300)
+  file_path <- file.path("/Volumes/x9/results/allsubs/figure/", paste("n_back_", y, "_by_task.png", sep = ""))
+  #ggsave(filename = file_path, plot = plot, width = 10, height = 6, dpi = 300)
 }
 
 
-#------------------------------------------------------------
-# ------------------------------ phenomenology
+
+
+#phenomenology ------------------------------ 
 # Define the x values
-x_values <- c("effort","n_block", "tpac", "p3", "psd",'theta','alpha',"pupil_norm","pupil_max_norm","time","dps")
-x_values <- c("theta_norm","alpha_norm","tpac_norm")
+x_values <- c("n_block","effort", "dprime", "score", "ps_norm","pac",'microsacc','p3','n2','p2')
 
-
+x_values <- c("effort")
 for (x in x_values) {
   # Create the plot
   phenom <- ggplot(dfa) + 
-    geom_point(aes_string(x = x, y = "arousal", color = "'Arousal'")) + 
-    geom_smooth(aes_string(x = x, y = "arousal", color = "'Arousal'"), method = "lm", se = TRUE) +
-    geom_point(aes_string(x = x, y = "valence", color = "'Valence'")) +
-    geom_smooth(aes_string(x = x, y = "valence", color = "'Valence'"), method = "lm", se = TRUE) +
+    geom_point(aes_string(x = x, y = "arousal_dt", color = "'Arousal'",alpha = 0.01)) + 
+    geom_smooth(aes_string(x = x, y = "arousal_dt", color = "'Arousal'"), method = "lm", se = TRUE) +
+    geom_point(aes_string(x = x, y = "valence_dt", color = "'Valence'"),alpha = 0.1) +
+    geom_smooth(aes_string(x = x, y = "valence_dt", color = "'Valence'"), method = "lm", se = TRUE) +
     labs(
-      title = paste("Phenomenal", x),
-      x = x,
+      title = paste("Phenomenal ", x),
+      
       y = "Arousal and valence"
     ) + 
     scale_color_manual(
@@ -261,45 +470,40 @@ for (x in x_values) {
       legend.position = c(.25, .95),
       legend.justification = c("right", "top"),
       legend.box.just = "right"
-    ) #+ facet_wrap(~ sub,scale="free")
+    ) + theme_minimal() #+ facet_wrap(~ strategy, scales = "fixed")
+    #xlim(-0.4, 0.4) +  # Set x-axis limits
+    #ylim(-0.4, 0.4)
   
   # Extract p-values
   p_value_arousal <- summary(lm(arousal ~ ., data = dfa[, c(x, "arousal")]))$coefficients[2, 4]
   p_value_valence <- summary(lm(valence ~ ., data = dfa[, c(x, "valence")]))$coefficients[2, 4]
   
   # Annotate p-values onto the plot
-  phenom <- phenom +
-    geom_text(x = Inf, y = Inf, label = paste("p-value:", round(p_value_arousal, 3)), 
-              hjust = 1, vjust = 1, color = "orange") +
-    geom_text(x = Inf, y = Inf, label = paste("p-value:", round(p_value_valence, 3)), 
-              hjust = 1, vjust = 2.5, color = "purple")
+  #phenom <- phenom + geom_text(x = Inf, y = Inf, label = paste("p-value:", round(p_value_arousal, 3)), hjust = 1, vjust = 1, color = "orange") +geom_text(x = Inf, y = Inf, label = paste("p-value:", round(p_value_valence, 3)), hjust = 1, vjust = 2.5, color = "purple")
   
   # Print the plot
   print(phenom)
   
   # Construct the file path
-  file_path <- file.path("/Volumes/Effort_data/subs/figure/", paste(task,"_phenom_", x, ".png", sep = ""))
+  file_path <- file.path("/Volumes/x9/results/allsubs/figure/", paste("phenom_", x, "_strategy.png", sep = ""))
   
   # Save the plot
-  ggsave(filename = file_path, plot = phenom, width = 10, height = 6, dpi = 300)
+  #ggsave(filename = file_path, plot = phenom, width = 10, height = 6, dpi = 300)
 }
 
-#------------------------------------------------------------
-# ----------------------------- x vs y by n_back
+
+#performance ----------------------------- 
 
 # Define x_values and y_values
-x_values <- c("effort", "tpac", "p3", "psd",'theta','alpha',"pupil_norm","pupil_max_norm")
-y_values <- c("dprime", "effort","pupil_norm","pupil_max_norm", "time", "rt_h",'theta','alpha',"valence_dt") # score
-
-x_values <- c("theta_norm","alpha_norm","tpac_norm")
-y_values <- c("dprime", "effort","pupil_norm", "time", "rt_h") # score
+x_values <- c("effort",'p3','n2','ps_norm','microsacc','ms_norm','rt_h','diff_ps_ms','diff_pac')
+y_values <- c("score","dprime",'g', "time", "rt_h", "effort") 
 
 
 # Loop over each y_value
-for (y_val in y_values) {
+for (x_val in x_values) {
   
   # Loop over each x_value
-  for (x_val in x_values) {
+  for (y_val in y_values) {
     
     # Skip if the dependent and independent variables are the same
     if (y_val == x_val) {
@@ -334,38 +538,29 @@ for (y_val in y_values) {
     perform <- ggplot(dfa, aes_string(x = x_val, y = y_val, col = "factor(n_back)")) +
       stat_smooth(aes_string(group = "factor(n_back)"), method = "lm", formula = "y ~ poly(x, 1)", se = FALSE) +
       geom_smooth(method = "lm", se = TRUE, color = "black") + # Add regression line for all data
-      geom_point() +
-      theme(
-        legend.position = c(1, 0),  # Place legend in top-right corner
-        legend.justification = c(1, 0),  # Justify legend to the right
-        legend.box.just = "right",  # Justify the legend box to the right
-        plot.caption = element_text(color = "black", face = "italic")
-      ) +
-      labs(
-        caption = paste("p-value 1:", round(p_values[,2][1], 3),
-                        "p-value 2:", round(p_values[,2][2], 3),
-                        "p-value 3:", round(p_values[,2][3], 3),
-                        "p-value total:", round(p_value_total, 3))
-      ) #+ facet_wrap(~ sub, scale="free")
+      #geom_point() +
+      facet_wrap(~ strategy, scale="free") +
+      theme_minimal() +
+      scale_color_manual(values = c("blue", "green", "red"))#+labs(caption = paste("p-value 1:", round(p_values[,2][1], 3),"p-value 2:", round(p_values[,2][2], 3),"p-value 3:", round(p_values[,2][3], 3),"p-value total:", round(p_value_total, 3))) 
         
     
     # Print the plot
     print(perform)
     
     # Construct the file path to include both y_val and x_val
-    file_path <- file.path("/Volumes/Effort_data/subs/figure/", paste(task,"_", y_val, "_vs_", x_val, "by_n.png", sep = ""))
+    file_path <- file.path("/Volumes/x9/results/allsubs/figure/", paste( "performance_",y_val, "_vs_", x_val, "by_n_back.png", sep = ""))
     
     # Save the plot
-    ggsave(filename = file_path, plot = perform, width = 10, height = 6, dpi = 300)
+    #ggsave(filename = file_path, plot = perform, width = 10, height = 6, dpi = 300)
   }
 }
 
-#------------------------------------------------------------
-# ----------------------------- interactions of sub.strategy
 
-ggplot(dfa, aes(x = strategy, y = slider_valenc.response, col = factor(n_back))) +
-  stat_smooth(aes(group = factor(n_back)), method = "lm",formula =  y ~ poly(x,1), se = FALSE) +
-  geom_point() #+ facet_wrap(~ sub)
+#sub.strategy ----------------------------- 
+
+ggplot(dfa, aes(x = g, y = slider_valenc.response, col = factor(n_back))) +
+  stat_smooth(aes(group = factor(n_back)), method = "lm",formula =  y ~ poly(x,1), se = TRUE) 
+  #+ geom_point() #+ facet_wrap(~ sub)
 
 ggplot(dfa, aes(x = strategy, y = valence)) +
   stat_smooth(method = "lm", formula =  y ~ 1 + poly(x,1), se = FALSE) +
@@ -384,20 +579,14 @@ ggplot(dfa, aes(x = strategy, y = valence)) +
   theme_minimal()
 
 
-#------------------------------------------------------------
-# ----------------------------- x vs y by strategy
 
-# remember to change the strategy in the code !!!!!
+#strategy ----------------------------- 
 
-x_values <- c("effort", "tpac", "p3", "psd",'theta','alpha', 'pupil_norm',"pupil_max_norm","n_block")
-y_values <- c("dprime", "effort", "pupil_norm","pupil_max_norm", "time", "rt_h","n_block")
-
-x_values <- c("theta_norm","alpha_norm","tpac_norm")
-y_values <- c("dprime", "effort","pupil_norm", "time", "rt_h","pupil_max_norm","n_block") # score
+x_values <- c("effort", "pac", 'ps_bs','ps_norm',"rt_h",'microsacc','ms_norm')
+y_values <- c("dprime", "effort", "ps_bs",'ps_norm', "time", "rt_h","n_block",'microsacc')
 
 
 
-# Loop through combinations of x and y values
 for (x_val in x_values) {
   for (y_val in y_values) {
     # Check if x_val and y_val are the same
@@ -414,36 +603,47 @@ for (x_val in x_values) {
     # Create the plot
     plot <- ggplot(dfa, aes_string(x = x_val, y = y_val, col = "factor(strategy)")) +
       stat_smooth(aes_string(group = "factor(strategy)"), method = "lm", formula = "y ~ poly(x, 1)", se = TRUE) +
-      geom_point() +
+      # Add legend title
+      labs(col = "Strategies") +
+      # Extract the variables used for x and y axes
       labs(
-        caption = paste("p-values static:", round(p_values2, 3), "p-values rolling:", round(p_values1, 3))
+        title = paste(y_val, " and ", x_val),
+        x = x_val,
+        y = y_val
       ) +
-      theme(legend.position = c(0.9, 0.9))
+      # Add other plot settings
+      theme_minimal() + facet_wrap(~ strategy,scale="fixed")
     
-    # Print or save the plot as per your requirement
+    # Print the plot
     print(plot)
     
     # Construct the file path to include both y_val and x_val
-    file_path <- file.path("/Volumes/Effort_data/subs/figure/", paste(task,"_", y_val, "_vs_", x_val, "by_strategy.png", sep = ""))
+    file_path <- file.path("/Volumes/x9/results/allsubs/figure/", paste(y_val, "_vs_", x_val, "by_strategy.png", sep = ""))
     
     # Save the plot
     ggsave(filename = file_path, plot = plot, width = 10, height = 6, dpi = 300)
   }
 }
 
-#------------------------------------------------------------
-# ---------------------------- wilcoxon test for the impact of strategy
 
+#wilcoxon ---------------------------- 
+
+# choose a task!!!
+task = "nback"
+task = "axcpt"
 # List of y_values
-y_values <- c("tpac", "psd", "p3",'theta','alpha',"effort","score", "dprime", "rt_h", "time", "valence", "arousal", "pupil_norm","slider_arous.response","slider_valenc.response","slider_effort.response")
-x_values <- c("strategy", "effort_category")  # Adding x_values
+y_values <- c("score", "dprime", "rt_h",'microsacc', "time","effort", "valence", "arousal","slider_effort.response","slider_arous.response","slider_valenc.response")
+x_values <- c("effort_category")  # , "effort_category","arousal_category","valence_category"
 
-y_values <- c("theta_norm","alpha_norm","tpac_norm")
-x_values <- c("strategy", "effort_category")  # Adding x_values
+dfa$block_category <- interaction(dfa$valence_category,dfa$performance_category)
+y_values <- c('p2')
+x_values <- c('block_category') 
 
+#dfa_task <- dfa[dfa$strategy %in% c("rolling", "static"), ]
+#dfa_task <- dfa[dfa$strategy %in% c("proactive", "reactive"), ]
 # Iterate over each y_value
-for (y_value in y_values) {
-  for (x_value in x_values) {  # Loop over x_values
+for (x_value in x_values) {
+  for (y_value in y_values) {  # Loop over x_values
     # Run Wilcoxon test
     test_result <- wilcox.test(get(y_value) ~ get(x_value), data = dfa)
     
@@ -464,7 +664,7 @@ for (y_value in y_values) {
     
     print(wilcox_plot)
     # Define file path
-    file_path <- file.path("/Volumes/Effort_data/subs/figure/", paste(task,"_test_", y_value, "_", x_value, ".png", sep = ""))
+    file_path <- file.path("/Volumes/x9/results/allsubs/figure/", paste("wilcoxon_test_", y_value, "_", x_value, ".png", sep = ""))
     
     # Save the plot
     ggsave(filename = file_path, plot = wilcox_plot, width = 10, height = 6, dpi = 300)
@@ -472,42 +672,38 @@ for (y_value in y_values) {
 }
 
 
-#-----------------------------------------------------------------
-# -------------------------------- violin_plot by sub and strategy
+
+#violin_plot -------------------------------- 
 
 # Vector of y values
-y_values <- c("effort", "dprime", "tpac", "p3", "psd",'theta','alpha', "pupil_norm","pupil_max_norm", "time", "valence", "rt_h")
+y_values <- c( "pac", "ps_bs",'ps_norm',"effort", "dprime", "time", "valence", "rt_h")
 
-y_values <- c("theta_norm","alpha_norm","tpac_norm")
-
-
+y_values <- c("p2")
 # Loop through y values
 for (y in y_values) {
-  dfa <- dfa %>%
-    mutate(strategy_sub = interaction(strategy, sub))
   
   # Create the violin plot
-  violin_plot <- ggplot(dfa, aes(x = strategy_sub, y = !!sym(y), fill = strategy)) +
+  violin_plot <- ggplot(subset(dfa,n_back>1), aes(x = block_category, y = !!sym(y), fill = block_category)) +
     geom_violin(trim = FALSE) +
     scale_fill_brewer(palette = "Set3") + 
     geom_boxplot(width = 0.1, fill = "white") + 
     theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "none") +
     labs(
-      title = paste("Parameters by Strategy-Subject Interaction (Y =", y, ")"),
-      x = "Strategy-Subject Interaction",
+      title = paste("Parameters by Strategy (Y =", y, ")"),
+      x = "Strategy",
       y = y
-    )
+    ) + theme_minimal() + facet_wrap(~strategy)
   
   print(violin_plot)
   
-  file_path <- file.path("/Volumes/Effort_data/subs/figure/", paste(task,"_violin_strategy_sub_", y, ".png", sep = ""))
+  file_path <- file.path("/Volumes/x9/results/allsubs/figure/", paste("violin_block_cateogry_", y, ".png", sep = ""))
   # Save the plot
-  ggsave(filename = file_path, plot = violin_plot, width = 10, height = 6, dpi = 300)
+  #ggsave(filename = file_path, plot = violin_plot, width = 10, height = 6, dpi = 300)
 }
 
-#------------------------------------------------------------
-# ------------------------------------------ elasticity
-# Create a function to compute elasticity
+
+#elasticity ------------------------------------------ 
+
 compute_elasticity <- function(data, x_value) {
   pct_change_g <- (data$g - lag(data$g)) / lag(data$g)
   pct_change_x <- (data[[x_value]] - lag(data[[x_value]])) / lag(data[[x_value]])
@@ -526,7 +722,7 @@ for (strategy_val in unique(dfa$strategy)) {
       subset_df <- subset(dfa, strategy == strategy_val & sub == sub_val & n_back == n_back_val)
       
       # Compute elasticity for the subset
-      elasticity <- compute_elasticity(subset_df, "p3_norm")
+      elasticity <- compute_elasticity(subset_df, "effort")
       
       # Store the elasticity result along with strategy, sub, and n_back
       result_entry <- data.frame(strategy = strategy_val,
@@ -544,7 +740,7 @@ for (strategy_val in unique(dfa$strategy)) {
 elasticity_df <- do.call(rbind, elasticity_results)
 
 # Plot with smoothed trend line
-ggplot(subset(elasticity_df,-20<elasticity & elasticity<20), aes(x = factor(n_back), y = elasticity, group = strategy, color = strategy)) +
+ggplot(subset(elasticity_df,-1<elasticity & elasticity<1), aes(x = factor(n_back), y = elasticity, group = strategy, color = strategy)) +
   #geom_line() +
   geom_point() +
   geom_smooth(method = "lm", se = FALSE) +  # Add smoothed trend line
@@ -552,7 +748,7 @@ ggplot(subset(elasticity_df,-20<elasticity & elasticity<20), aes(x = factor(n_ba
   theme_minimal()
 
 # Plot with violin plot
-ggplot(subset(elasticity_df,-1000<elasticity & elasticity<1000), aes(x = factor(n_back), y = elasticity, fill = strategy)) +
+ggplot(subset(elasticity_df,-1<elasticity & elasticity<1), aes(x = factor(n_back), y = elasticity, fill = strategy)) +
   geom_violin() +
   labs(x = "Difficulty Level", y = "Elasticity", title = "Pupil elasticity of performance") +
   theme_minimal()
@@ -566,12 +762,12 @@ df3d <- (dfa)
 # Replace "column_name" with the actual column containing missing values
 df3d$effort[is.na(df3d$effort)] <- mean(df3d$effort, na.rm = TRUE)
 df3d$dprime[is.na(df3d$dprime)] <- mean(df3d$dprime, na.rm = TRUE)
-df3d$pupil_norm[is.na(df3d$pupil_norm)] <- mean(df3d$pupil_norm, na.rm = TRUE)
+df3d$ps_bs[is.na(df3d$ps_bs)] <- mean(df3d$ps_bs, na.rm = TRUE)
 
 
 
 # Create 3D scatterplot with grouping by dfa$n_back
-plot_ly(data = subset(dfa,n_back>0), x = ~n_back, y = ~strategy, z = ~ dprime, color = ~factor(round(effort,1)), type = "scatter3d", mode = "markers") %>%
+plot_ly(data = subset(dfa,n_back>0), x = ~effort, y = ~strategy, z = ~ dprime, color = ~factor(round(n_back,1)), type = "scatter3d", mode = "markers") %>%
   layout(scene = list(xaxis = list(title = "n back"),
                       yaxis = list(title = "Strategy"),
                       zaxis = list(title = "Dprime"),
@@ -588,3 +784,7 @@ plot_ly(data = subset(dfa, n_back > 0), x = ~effort, y = ~strategy, z = ~dprime,
                       yaxis = list(title = "Strategy"),
                       zaxis = list(title = "Dprime"),
                       aspectmode = "cube"))
+
+
+
+
