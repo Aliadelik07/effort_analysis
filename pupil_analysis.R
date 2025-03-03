@@ -1,4 +1,4 @@
-#impporting modules =====================
+#importing modules =====================
 library(readr)
 library("readxl")
 library(ggrepel)
@@ -6,9 +6,13 @@ require(ggplot2)
 library(investr)
 library(dplyr)
 library(vroom)
+library(vars)
+library(tseries)
+library(sjPlot)
+library(patchwork) 
+library(lmerTest)
 
 # ----------------------- import after running the preprocessing pupil.R
-
 
 sub_list <- read_csv("/Users/ali/Desktop/Experiment/check_list.csv")
 rows_to_remove <- c(1, 2, 3, 4, 5, 6, 10, 19, 20, 32, 33, 34, 39, 42, 43, 45, 46, 53, 54) #bad files
@@ -35,65 +39,95 @@ for (isub in 1:nrow(sub_list)) {
   idx_two <- which(df$text == 2)
   
   # Initialize lists to store the mean values and their indices
-  mean_values_list <- list()
+  mean_pupil_stim_list <- list()
   mean_derivative_list <- list()
-  mean_baseline_list <- list()
-  mean_microsacc_list <- list()
-  mean_magnitude_list <- list()
+  mean_pupil_rest_list <- list()
+  mean_microsacc_stim_list <- list()
+  mean_microsacc_rest_list <- list()
+  mean_magnitude_stim_list <- list()
+  mean_magnitude_rest_list <- list()
+  mean_blink_stim_list <- list()
+  mean_blink_rest_list <- list()
   
   # Loop to find mean and mean of first derivative for segments of interest: a block
   for (i in 1:length(idx_block)) {
     current_block_idx <- idx_block[i]
     threes_after_block <- idx_three[idx_three > current_block_idx]
-    baseline_idx <- idx_two[i]
+    rest_idx <- idx_two[idx_two > current_block_idx]
     
     if (length(threes_after_block) >= 2) {
       start_idx <- current_block_idx
       end_idx <- threes_after_block[1] - 1
       
-      # Calculate mean of pupil_size
-      mean_value <- mean(df$pupil_size[start_idx:end_idx], na.rm = TRUE)
-      # Calculate mean of first derivative
+      # mean pupil_size
+      mean_pupil_stim <- mean(df$pupil_size[start_idx:end_idx], na.rm = TRUE)
+      mean_pupil_rest <- mean(df$pupil_size[rest_idx:rest_idx+1000], na.rm = TRUE)
+      
       mean_derivative <- mean(df$first_derivative[start_idx:end_idx], na.rm = TRUE)
-      # Calculate mean of pupil_size in baseline
-      mean_baseline <- mean(df$pupil_size[start_idx+80:start_idx+160], na.rm = TRUE)
-      # Calculate sum of microsaccade rate
-      mean_microsacc <- mean(df$is_microsaccade[start_idx:end_idx], na.rm = TRUE)
-      # Calculate sum of microsaccade mag
-      mean_magnitude <- mean(df$magnitude[start_idx:end_idx], na.rm = TRUE)
+      
+      # mean microsaccade
+      mean_microsacc_stim <- mean(df$ms[start_idx:end_idx], na.rm = TRUE)
+      mean_microsacc_rest <- mean(df$ms[rest_idx:rest_idx+1000], na.rm = TRUE)
+      
+      # mean magnitude
+      mean_magnitude_stim <- mean(df$magnitude[start_idx:end_idx], na.rm = TRUE)
+      mean_magnitude_rest <- mean(df$magnitude[rest_idx:rest_idx+1000], na.rm = TRUE)
+      
+      # mean blink
+      mean_blink_stim <- mean(df$blink[start_idx:end_idx], na.rm = TRUE)
+      mean_blink_rest <- mean(df$blink[rest_idx:rest_idx+10000], na.rm = TRUE)
+      
       
       # Append the mean values to the lists
-      mean_values_list[[paste("block", i)]] <- mean_value
+      mean_pupil_stim_list[[paste("block", i)]] <- mean_pupil_stim
+      mean_pupil_rest_list[[paste("block", i)]] <- mean_pupil_rest
+      
       mean_derivative_list[[paste("block", i)]] <- mean_derivative
-      mean_baseline_list[[paste("block", i)]] <- mean_baseline
-      mean_microsacc_list[[paste("block", i)]] <- mean_microsacc
-      mean_magnitude_list[[paste("block", i)]] <- mean_magnitude
+      
+      mean_microsacc_stim_list[[paste("block", i)]] <- mean_microsacc_stim
+      mean_microsacc_rest_list[[paste("block", i)]] <- mean_microsacc_rest
+      
+      mean_magnitude_stim_list[[paste("block", i)]] <- mean_magnitude_stim
+      mean_magnitude_rest_list[[paste("block", i)]] <- mean_magnitude_rest
+      
+      mean_blink_stim_list[[paste("block", i)]] <- mean_blink_stim
+      mean_blink_rest_list[[paste("block", i)]] <- mean_blink_rest
     }
   }
   
   # Convert the lists to a data frame for easier viewing
-  ddf <- data.frame(Segment = names(mean_values_list),
-                    Mean_Value = unlist(mean_values_list),
-                    Mean_Derivative = unlist(mean_derivative_list),
-                    Mean_baseline = unlist(mean_baseline_list),
-                    Mean_microsacc = unlist(mean_microsacc_list),
-                    Mean_magnitude = unlist(mean_magnitude_list)
+  ddf <- data.frame(Segment = names(mean_pupil_stim_list),
+                    mean_pupil_stim = unlist(mean_pupil_stim_list),
+                    mean_pupil_rest = unlist(mean_pupil_rest_list),
+                    mean_derivative = unlist(mean_derivative_list),
+                    mean_microsacc_stim = unlist(mean_microsacc_stim_list),
+                    mean_microsacc_rest = unlist(mean_microsacc_rest_list),
+                    mean_magnitude_stim = unlist(mean_magnitude_stim_list),
+                    mean_magnitude_rest = unlist(mean_magnitude_rest_list),
+                    mean_blink_stim = unlist(mean_blink_stim_list),
+                    mean_blink_rest = unlist(mean_blink_rest_list)
   )
   
   #---------------------- saving average and deravitive for response analysis
   bdf <- read.csv(paste0("/Volumes/x9/INITIAL_DATABASE/",sub,"/",sub,"-",strategy,"-test.csv"))
   
   
-  bdf$ps <- ddf$Mean_Value
-  bdf$dps <- ddf$Mean_Derivative
-  bdf$ps_baseline <- ddf$Mean_baseline
-  bdf$microsacc <- ddf$Mean_microsacc
-  bdf$magnitude <- ddf$Mean_magnitude
+  bdf$pupil_stim <- ddf$mean_pupil_stim
+  bdf$pupil_rest <- ddf$mean_pupil_rest
+  bdf$microsacc_stim <- ddf$mean_microsacc_stim
+  bdf$microsacc_rest <- ddf$mean_microsacc_rest
+  bdf$magnitude_stim <- ddf$mean_magnitude_stim
+  bdf$magnitude_rest <- ddf$mean_magnitude_rest
+  bdf$blink_stim <- ddf$mean_blink_stim
+  bdf$blink_rest <- ddf$mean_blink_rest
   
-  bdf$ps_bs <- (bdf$ps - bdf$ps_baseline)/bdf$ps_baseline
+  bdf$ps_bs <- (bdf$pupil_stim - bdf$pupil_rest)/bdf$pupil_rest
+  bdf$ps_bs[is.infinite(bdf$ps_bs)] <- NA
+  bdf$ms_bs <- (bdf$microsacc_stim - bdf$microsacc_rest)/bdf$microsacc_rest
+  bdf$ms_bs[is.infinite(bdf$ms_bs)] <- NA
   
   
-  #summary(lm(ps ~ effort  , bdf))
+  
   if(FALSE){
   # ----------------------- arousal for action
   # Find indices where text == "block"
@@ -257,9 +291,9 @@ for (isub in 1:nrow(sub_list)) {
          type = "cairo"              # This can ensure better quality on some systems
   )
   
-  data_10 <- process_data(df, "10",df$is_microsaccade)
-  data_20 <- process_data(df, "20",df$is_microsaccade)
-  data_30 <- process_data(df, "30",df$is_microsaccade)
+  data_10 <- process_data(df, "10",df$ms)
+  data_20 <- process_data(df, "20",df$ms)
+  data_30 <- process_data(df, "30",df$ms)
   
   # Combine all data
   all_data <- rbind(data_10, data_20, data_30)
@@ -444,20 +478,20 @@ for (isub in 1:nrow(sub_list)) {
   plot_data <- left_join(plot_data, bdf %>% select(effort, valence), by='effort')
   plot_data <- left_join(plot_data, bdf %>% select(effort, effort_category), by='effort')
   plot_data <- left_join(plot_data, bdf %>% select(effort, valence_category), by='effort')
-  plot_data <- left_join(plot_data, bdf %>% select(effort, ps_baseline), by='effort')
+  plot_data <- left_join(plot_data, bdf %>% select(effort, ps_pupil_rest), by='effort')
 
   plot_data$effort_valence_category <- paste(plot_data$effort_category, plot_data$valence_category, sep=" ")
   
   
   # normlizing by DC-offset
-  baseline_data <- plot_data %>%
+  pupil_rest_data <- plot_data %>%
     filter(position < 0) %>%
     group_by(effort) %>%
-    summarize(baseline = mean(avg_pupil_size, na.rm = TRUE))
+    summarize(pupil_rest = mean(avg_pupil_size, na.rm = TRUE))
   
-  #plot_data <- left_join(plot_data, baseline_data, by = "effort")
+  #plot_data <- left_join(plot_data, pupil_rest_data, by = "effort")
   
-  plot_data$normalized_avg_pupil_size <- (plot_data$avg_pupil_size - plot_data$ps_baseline)/plot_data$ps_baseline
+  plot_data$normalized_avg_pupil_size <- (plot_data$avg_pupil_size - plot_data$ps_pupil_rest)/plot_data$ps_pupil_rest
   
   
   fig <- ggplot(plot_data, aes(x = position, y = normalized_avg_pupil_size, group = effort, color = as.factor(round(effort,1)))) +
@@ -586,11 +620,11 @@ for (isub in 1:nrow(sub_list)) {
 }
   
   # Process and plot the data
-  plot_data <- process_block_data(df, bdf$effort,df$is_microsaccade)
+  plot_data <- process_block_data(df, bdf$effort,df$ms)
   plot_data <- left_join(plot_data, bdf %>% select(effort, valence), by='effort')
   plot_data <- left_join(plot_data, bdf %>% select(effort, effort_category), by='effort')
   plot_data <- left_join(plot_data, bdf %>% select(effort, valence_category), by='effort')
-  plot_data <- left_join(plot_data, bdf %>% select(effort, ps_baseline), by='effort')
+  plot_data <- left_join(plot_data, bdf %>% select(effort, ps_pupil_rest), by='effort')
   
   
   fig <- ggplot(plot_data, aes(x = position, y = avg_pupil_size, group = effort, color = as.factor(round(effort,1)))) +
@@ -673,14 +707,14 @@ for (isub in 1:nrow(sub_list)) {
   plot_data <- left_join(plot_data, bdf %>% select(effort, valence), by="effort")
   plot_data <- left_join(plot_data, bdf %>% select(effort, effort_category), by="effort")
   plot_data <- left_join(plot_data, bdf %>% select(effort, valence_category), by="effort")
-  plot_data <- left_join(plot_data, bdf %>% select(effort, ps_baseline), by="effort")
+  plot_data <- left_join(plot_data, bdf %>% select(effort, ps_pupil_rest), by="effort")
   
   plot_data$valence_category <- paste(plot_data$valence_category, "valence", sep=" ")
   plot_data$effort_category <- paste(plot_data$effort_category, "effort", sep=" ")
   plot_data$effort_valence_category <- paste(plot_data$effort_category, plot_data$valence_category, sep=" ")
   
   
-  plot_data$normalized_avg_pupil_size <- (plot_data$avg_pupil_size - plot_data$ps_baseline)/plot_data$ps_baseline
+  plot_data$normalized_avg_pupil_size <- (plot_data$avg_pupil_size - plot_data$ps_pupil_rest)/plot_data$ps_pupil_rest
   
   fig <- ggplot(plot_data, aes(x = position, y = normalized_avg_pupil_size, group = effort, color = as.factor(round(effort,1)))) +
     #geom_line() +
@@ -778,13 +812,11 @@ for (isub in 1:nrow(sub_list)) {
   cat('|',rep("#", isub), rep("-", nrow(sub_list) - isub),'|\n', sep = "")
 }
 
-
 #group_level_analysis---------------------------------
-
-process_block_data <- function(df,bf,event) {
+process_block_data <- function(df,bf,event,pre,post) {
   block_indices <- which(df$text == "block")
-  post_position = 1000
-  pre_position = 0
+  post_position = post
+  pre_position = pre
   if(length(block_indices) != length(bf$n_back)) {
     stop("The number of blocks and effort ratings do not match.")
   }
@@ -797,30 +829,33 @@ process_block_data <- function(df,bf,event) {
     pupil_sizes <- vector("list", post_position+1)
     microsacc <- vector("list", post_position+1)
     magnitude <- vector("list", post_position+1)
+    blink <- vector("list", post_position+1)
 
-    
-    for (jj in pre_position:post_position) {
-      temp <- numeric()
-      
-      for (trial_index in trial_indices) {
-        if ((trial_index + jj) > 0 && (trial_index + jj) <= nrow(df)) {
-          temp <- c(temp, df$pupil_size[trial_index + jj])
-        }
-      }
-      pupil_sizes[[jj + post_position+1]] <- mean(temp, na.rm = TRUE)
-    }
-    
+    #pupil
     for (j in pre_position:post_position) {
       temp <- numeric()
       
       for (trial_index in trial_indices) {
         if ((trial_index + j) > 0 && (trial_index + j) <= nrow(df)) {
-          temp <- c(temp, df$is_microsaccade[trial_index + j])
+          temp <- c(temp, df$ps[trial_index + j])
+        }
+      }
+      pupil_sizes[[j + post_position+1]] <- mean(temp, na.rm = TRUE)
+    }
+    
+    #microsaccade
+    for (j in pre_position:post_position) {
+      temp <- numeric()
+      
+      for (trial_index in trial_indices) {
+        if ((trial_index + j) > 0 && (trial_index + j) <= nrow(df)) {
+          temp <- c(temp, df$ms[trial_index + j])
         }
       }
       microsacc[[j + post_position+1]] <- mean(temp, na.rm = TRUE)
     }
     
+    #magnitude
     for (j in pre_position:post_position) {
       temp <- numeric()
       
@@ -832,6 +867,18 @@ process_block_data <- function(df,bf,event) {
       magnitude[[j + post_position+1]] <- mean(temp, na.rm = TRUE)
     }
     
+    #blink
+    for (j in pre_position:post_position) {
+      temp <- numeric()
+      
+      for (trial_index in trial_indices) {
+        if ((trial_index + j) > 0 && (trial_index + j) <= nrow(df)) {
+          temp <- c(temp, df$blink[trial_index + j])
+        }
+      }
+      blink[[j + post_position+1]] <- mean(temp, na.rm = TRUE)
+    }
+    
     block_data <- data.frame(
       block = bf$n_block[i],
       n_back = bf$n_back[i],
@@ -839,8 +886,9 @@ process_block_data <- function(df,bf,event) {
       pupil_size = unlist(pupil_sizes),
       microsacc = unlist(microsacc),
       magnitude = unlist(magnitude),
+      blink = unlist(blink),
+      effort = round(bf$slider_effort.response[i]/10),
       effort_category = bf$effort_category[i],
-      valence_category = bf$valence_category[i],
       performance_category = bf$performance_category[i],
       pac1 = bf$pac1[i],
       pac2 = bf$pac2[i]
@@ -851,17 +899,17 @@ process_block_data <- function(df,bf,event) {
 }
 
 # Min-Max normalization function
-minmax_normalize <- function(x) {(x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))}
+minmax_normalize <- function(x,a) {(x - min(a, na.rm = TRUE)) / (max(a, na.rm = TRUE) - min(a, na.rm = TRUE))}
 
 
-sub_list <- read_csv("/Users/ali/Desktop/Experiment/check_list.csv")
+sub_list <- read_csv("/Users/ali/Documents/Experiment/check_list.csv")
 
 rows_to_remove <- c(1, 2, 3, 4, 5, 6, 10, 19, 20, 32, 33, 34, 39, 41, 42, 43, 45, 46, 53, 54) #bad files
 sub_list <- sub_list[-rows_to_remove, ] # recordings to remove
 sub_list <- sub_list[!is.na(sub_list$sub), ] # removing the NaN
 
-dfplot_list_stim <- list()
-#dfplot_list_fdbk <- list()
+dfplot_list <- list()
+
 # Loop through the data
 for (isub in 1:nrow(sub_list)) {
   
@@ -873,9 +921,12 @@ for (isub in 1:nrow(sub_list)) {
   
   # Update "10", "20", or "30" to "stim"
   df$text <- ifelse(grepl("10|20|30", df$text), "stim", df$text)
+  df$text <- ifelse(grepl("2", df$text), "rest", df$text)
   
   # ERP
-  plot_data_stim <- process_block_data(df, bf, 'stim')
+  plot_data_stim <- process_block_data(df, bf, 'stim',0,1000)
+  plot_data_rest <- process_block_data(df, bf, 'rest',0,1000)
+  
 
   # removing outlier
   repeat {
@@ -884,7 +935,7 @@ for (isub in 1:nrow(sub_list)) {
     
     # remove the outlier
     plot_data_stim[['pupil_size']][abs(scale(plot_data_stim[['pupil_size']])) >= 3] <- NA
-    
+    plot_data_rest[['pupil_size']][abs(scale(plot_data_rest[['pupil_size']])) >= 3] <- NA
     # Check if no more NAs were added
     current_na_count <- sum(is.na(plot_data_stim))
     
@@ -894,12 +945,28 @@ for (isub in 1:nrow(sub_list)) {
     }
   }
   
+  # renaming 
+  # List of columns to modify
+  columns_to_modify <- c("pupil_size", "microsacc", "magnitude", "blink")
+  
+  # Rename the specified columns
+  colnames(plot_data_stim)[colnames(plot_data_stim) %in% columns_to_modify] <- 
+    paste0(columns_to_modify, "_stim")
+  
+  # Rename the specified columns
+  colnames(plot_data_rest)[colnames(plot_data_rest) %in% columns_to_modify] <- 
+    paste0(columns_to_modify, "_rest")
+  
+  #combining
+  plot_data <- cbind(plot_data_rest, plot_data_stim)
+  plot_data <- plot_data[, !duplicated(colnames(plot_data))]
   
   #normlizing
-  plot_data_stim$norm_pupil_size = minmax_normalize(plot_data_stim$pupil_size)
+  plot_data$pupil_size_stim_norm = minmax_normalize(plot_data$pupil_size_stim,c(plot_data$pupil_size_rest, plot_data$pupil_size_stim))
+  plot_data$pupil_size_rest_norm = minmax_normalize(plot_data$pupil_size_rest,c(plot_data$pupil_size_rest, plot_data$pupil_size_stim))
   
   #adding sub charachtrestics
-  plot_data_stim <- plot_data_stim %>% mutate(
+  plot_data <- plot_data %>% mutate(
     sub = sub,
     sex = sub_list$sex[isub],
     age = sub_list$age[isub],
@@ -910,14 +977,14 @@ for (isub in 1:nrow(sub_list)) {
   )
   
   # Add the processed data frame to the list
-  dfplot_list_stim[[isub]] <- plot_data_stim
+  dfplot_list[[isub]] <- plot_data
   
   #################### adding ps and ms to bf
-  dfp_pac <-  plot_data_stim
-  dfp_pac <- dfp_pac %>% filter(position >= 1 & position <= 240)
+  dfp_pac <-  plot_data
+  dfp_pac <- dfp_pac %>% filter(position >= 1 & position <= 600)
   
   # Number of rows per batch
-  batch_size <- 120
+  batch_size <- 300
   
   # Number of batches
   n_batches <- floor(nrow(dfp_pac) / batch_size)
@@ -932,24 +999,18 @@ for (isub in 1:nrow(sub_list)) {
   
   # Loop through each batch and calculate the averages
   for (i in seq(1, n_batches, by = 2)) {
-    # Average for norm_pupil_size for every first 200 rows
-    ps1[[length(ps1) + 1]] <- mean(dfp_pac$norm_pupil_size[((i - 1) * batch_size + 1):(i * batch_size)], na.rm = TRUE)
+    ps1[[length(ps1) + 1]] <- mean(dfp_pac$pupil_size_stim_norm[((i - 1) * batch_size + 1):(i * batch_size)], na.rm = TRUE)
     
-    # Average for microsacc for every first 200 rows
-    ms1[[length(ms1) + 1]] <- mean(dfp_pac$microsacc[((i - 1) * batch_size + 1):(i * batch_size)], na.rm = TRUE)
+    ms1[[length(ms1) + 1]] <- mean(dfp_pac$microsacc_stim[((i - 1) * batch_size + 1):(i * batch_size)], na.rm = TRUE)
     
-    # Average for magnitude for every first 200 rows
     mg1[[length(mg1) + 1]] <- mean(dfp_pac$magnitude[((i - 1) * batch_size + 1):(i * batch_size)], na.rm = TRUE)
     
     # Check if there is a second 200 rows batch to calculate the average
     if (i + 1 <= n_batches) {
-      # Average for norm_pupil_size for every second 200 rows
-      ps2[[length(ps2) + 1]] <- mean(dfp_pac$norm_pupil_size[(i * batch_size + 1):((i + 1) * batch_size)], na.rm = TRUE)
+      ps2[[length(ps2) + 1]] <- mean(dfp_pac$pupil_size_stim_norm[(i * batch_size + 1):((i + 1) * batch_size)], na.rm = TRUE)
       
-      # Average for microsacc for every second 200 rows
-      ms2[[length(ms2) + 1]] <- mean(dfp_pac$microsacc[(i * batch_size + 1):((i + 1) * batch_size)], na.rm = TRUE)
-      
-      # Average for magnitude for every first 200 rows
+      ms2[[length(ms2) + 1]] <- mean(dfp_pac$microsacc_stim[(i * batch_size + 1):((i + 1) * batch_size)], na.rm = TRUE)
+
       mg2[[length(mg2) + 1]] <- mean(dfp_pac$magnitude[(i * batch_size + 1):((i + 1) * batch_size)], na.rm = TRUE)
     }
   }
@@ -974,40 +1035,220 @@ for (isub in 1:nrow(sub_list)) {
 
 
 # Combine all data frames into one
-dfplot_stim <- bind_rows(dfplot_list_stim)
+dfplot <- bind_rows(dfplot_list)
 
-dfplot_stim <- dfplot_stim %>%mutate(task = ifelse(strategy %in% c("rolling", "static"), "n-back", "ax-cpt"))
+dfplot <- dfplot %>%
+  mutate(task = ifelse(strategy %in% c('static', 'rolling'), 'n-back', 'ax-cpt'))
+
+dfplot$block <- dfplot$block + 1
 
 # save the final dfplot
-write.csv(dfplot_stim, paste0("/Volumes/x9/INITIAL_DATABASE/dfplot_stim.csv"))
-#write.csv(dfplot_fdbk, paste0("/Volumes/x9/INITIAL_DATABASE/dfplot_fdbk.csv"))
-
-# if you already combined and just want to load agian
-#dfplot_fdbk <- read_csv(paste0("/Volumes/x9/INITIAL_DATABASE/dfplot_fdbk.csv"))
+write.csv(dfplot, paste0("/Volumes/x9/INITIAL_DATABASE/dfplot_stim_lambda_6.csv"))
 
 #============================================= plotting =================
-dfplot_stim <- read_csv(paste0('/Volumes/x9/INITIAL_DATABASE/dfplot_stim.csv'))
+dfplot <- read_csv(paste0('/Volumes/x9/INITIAL_DATABASE/dfplot_stim_lambda_6.csv'))
 
-#Aggregating the data
-dfplot_agg <- dfplot_stim %>%
-  group_by(position,task, strategy, n_back, effort_category) %>%
-  summarize(norm_pupil_size = mean(norm_pupil_size, na.rm = TRUE),
-            microsacc = mean(microsacc, na.rm = TRUE),
-            magnitude = mean(magnitude, na.rm = TRUE))
 
-fig <- ggplot(dfplot_agg, aes(x = position, y = microsacc, group = factor(n_back), color = factor(n_back))) +
-  geom_smooth(method = "loess", span = 0.4, se = TRUE) +
-  theme_minimal() +
-  scale_color_manual(values = c("1" = "blue", "2" = "green", "3" = "red")) +
-  #scale_x_continuous(breaks = c(0, 500, 1000), labels = c("0", "1", "2")) +
-  labs(title = "Pupil relative to trial start",
+#reorgnising rest and stim
+df_stim <- dfplot[, c("pupil_size_stim_norm", "microsacc_stim", "blink_stim", 
+                   "magnitude_stim", "position", "strategy", "sub", 
+                   "block", "effort")]
+colnames(df_stim) <- gsub("_stim", "", colnames(df_stim))
+
+df_stim$effort_category <- ifelse(df_stim$effort > median(df_stim$effort, na.rm = TRUE),
+                                  "High effort", "Low effort")
+
+df_rest <- dfplot[, c("pupil_size_rest_norm", "microsacc_rest", "blink_rest", 
+                   "magnitude_rest", "position", "strategy", "sub", 
+                   "block", "effort")]
+colnames(df_rest) <- gsub("_rest", "", colnames(df_rest))
+
+df_rest$effort_category <- "Rest"
+df_rest$effort <- -1
+
+df_eye <- rbind(df_stim, df_rest)
+
+# converting to time and hz
+df_eye$time <- round(df_eye$position/500,1)
+
+df_agg <- df_eye %>%
+  group_by(time, strategy, block, effort_category) %>%
+  summarize(ps = mean(pupil_size_norm, na.rm = TRUE),
+            ms = mean(microsacc, na.rm = TRUE)*100,
+            bl = mean(blink, na.rm = TRUE),
+            mag = mean(magnitude, na.rm = TRUE))
+
+
+# Generate the plot
+fig <- ggplot(df_agg, aes(x = time, y = ps, 
+                          group = effort_category,
+                          color = effort_category)) +
+  geom_smooth(method = "loess", span = 0.3, se = TRUE) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +  # Trial onset line
+  annotate("text", x = 0, y = 0.61, label = "Trial Onset",  vjust = -0.5, hjust = 0, size = 6, fontface = "bold") +  # Label for the line
+  theme_minimal(base_size = 16) +  # Increase font size
+  scale_color_manual(values = c("Rest" = "#00008B", 
+                                "High effort" = "#8B0000", 
+                                "Low effort" = "#FFC0CB")) +
+  labs(title = "Stim-locked EPR of Pupil Size",
        x = "Seconds",
-       y = "Magnitude",
-       color = "Difficulty Level") + facet_wrap(~strategy, scales = "fixed")  
-  
-fig
+       y = "Pupil Size (%)",
+       color = "") +
+  theme(legend.position = c(0.8, 0.2),
+        legend.key = element_rect(fill = NA))
 
-ggsave(filename = "/Volumes/x9/results/allsubs/figure/ERP_microsacc_stim_n_back_strategy.png",  # The name of the output file
+
+# Print the plot
+print(fig)
+
+ggsave(filename = "/Volumes/x9/results/allsubs/figure/EPR_ps_6_all.png",  # The name of the output file
        plot = fig,                    # The ggplot object you created
        width = 8, height = 6, unit = "in",  # Size of the output (can also be in cm or mm)
        dpi = 300)                     # Resolution in dots per inch
+
+# Generate the plot
+fig <- ggplot(df_agg, aes(x = time, y = ms, 
+                          group = effort_category,
+                          color = effort_category)) +
+  geom_smooth(method = "loess", span = 0.3, se = TRUE) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +  # Trial onset line
+  annotate("text", x = 0, y = 0.8, label = "Trial Onset",  vjust = -0.5, hjust = 0, size = 6, fontface = "bold") +  # Label for the line
+  theme_minimal(base_size = 16) +  # Increase font size
+  scale_color_manual(values = c("Rest" = "#00008B", 
+                                "High effort" = "#8B0000", 
+                                "Low effort" = "#FFC0CB")) +
+  labs(title = "Stim-locked EPR of Microsaccade",
+       x = "Seconds",
+       y = "Microsaccade (Hz)",
+       color = "") +
+  theme(legend.position = c(0.8, 0.2),
+        legend.key = element_rect(fill = NA))
+
+# Print the plot
+print(fig)
+
+ggsave(filename = "/Volumes/x9/results/allsubs/figure/EPR_ms_6_all.png",  # The name of the output file
+       plot = fig,                    # The ggplot object you created
+       width = 8, height = 6, unit = "in",  # Size of the output (can also be in cm or mm)
+       dpi = 300)                     # Resolution in dots per inch
+
+# statistics ========
+dfplot <- read_csv('/Volumes/x9/INITIAL_DATABASE/dfplot_stim_lambda_6.csv', locale = locale(encoding = "UTF-8"))
+
+#dfplot <- dfplot %>%left_join(dfa %>% dplyr::select(sub, strategy, block, m_correct), by = c("sub", "strategy", "block"))
+
+#normlizing microsaccade
+dfplot$microsacc_stim_norm <- (dfplot$microsacc_stim - dfplot$microsacc_rest)/ dfplot$microsacc_rest
+#dfplot$microsacc_stim_norm <- minmax_normalize(dfplot$microsacc_stim,c(dfplot$microsacc_rest, dfplot$microsacc_stim))
+
+# removing inf
+dfplot <- dfplot %>% filter_all(all_vars(!is.infinite(.)))
+# removing NA
+dfplot_clean <- na.omit(dfplot)
+
+# effort ---------------
+# microsaccade
+model2 <-lmer( microsacc_stim_norm ~ effort*strategy + n_back + block + (1|position) + (1|sub), subset(dfplot_clean,task=='ax-cpt'))
+summary(model2)
+model1 <-lmer( microsacc_stim_norm ~ effort*strategy + n_back + block + (1|position) + (1|sub), subset(dfplot_clean,task=='n-back'))
+summary(model1)
+
+
+# (further analysis) comparing stim vs rest for microsaccade
+
+df_long <- tidyr::pivot_longer(dfplot, cols = c(microsacc_stim, microsacc_rest),
+                               names_to = "condition", values_to = "microsacc")
+
+# Convert condition to a factor
+df_long$condition <- factor(df_long$condition, levels = c("microsacc_rest", "microsacc_stim"))  # Reference: rest
+
+
+model2 <-lmer( microsacc ~ condition + block + (1|position) + (1|sub), subset(df_long,task=='ax-cpt'))
+summary(model2)
+model1 <-lmer( microsacc ~ condition + block + (1|position) + (1|sub), subset(df_long,task=='n-back'))
+summary(model1)
+
+
+# pupil size
+model2 <-lmer( pupil_size_stim_norm ~ effort*strategy + n_back + block + (1|position)  + (1|sub), subset(dfplot_clean,task=='ax-cpt'))
+summary(model2)
+model1 <-lmer( pupil_size_stim_norm ~ effort*strategy + n_back + block + (1|position) + (1|sub), subset(dfplot_clean,task=='n-back'))
+summary(model1)
+
+
+plot_model(model1, type = "int", show.data = FALSE) +  # Effect plot for fixed effects
+  theme_minimal(base_size = 14) +
+  labs(title = "N-back",
+       x = "Reported effort",
+       y = "Predicted pupil size") +
+  theme(legend.position = "top")
+
+plot_model(model2, type = "int", show.data = FALSE) +  # Effect plot for fixed effects
+  theme_minimal(base_size = 14) +
+  labs(title = "AX-CPT",
+       x = "Reported effort",
+       y = "Predicted pupil size") +
+  theme(legend.position = "top")
+
+
+# pac ---------
+dfa <- read_csv(paste0("/Users/ali/Documents/Experiment/dfa-test.csv"))
+names(dfa)[names(dfa) == "n_block"] <- "block"
+dfa$block <- dfa$block + 1
+
+
+# Merge the computed averages into dfa
+dfplot_clean <- dfplot_clean %>%
+  left_join(dfa, by = c("sub", "strategy", "block"))
+
+# ps ~ pac
+model1 <-lmer( pupil_size_stim_norm ~  pac3_high*strategy + n_back.x + block + (1|position) + (1|sub), subset(dfplot_clean,task.x=='n-back'))
+summary(model1)
+
+model2 <-lmer( pupil_size_stim_norm ~  pac3_high*strategy + n_back.x + block + (1|position)  + (1|sub), subset(dfplot_clean,task.x=='ax-cpt'))
+summary(model2)
+
+plot_model(model1, type = "int", show.data = FALSE) +  # Effect plot for fixed effects
+  theme_minimal(base_size = 14) +
+  labs(title = "N-back",
+       x = "Predicted PAC",
+       y = "Pupil size" ) +
+  theme(legend.position = "top")
+
+plot_model(model2, type = "int", show.data = FALSE) +  # Effect plot for fixed effects
+  theme_minimal(base_size = 14) +
+  labs(title = "AX-CPT",
+       x = "Predicted PAC",
+       y = "Pupil size") +
+  theme(legend.position = "top")
+
+dfplot_clean$delta_pac <- I(dfplot_clean$pac2.x - dfplot_clean$pac1.x)
+
+model1 <-lmer( pupil_size_stim_norm  ~ delta_pac*strategy + n_back.x + block + (1|position) + (1|sub), subset(dfplot_clean,task.x=='n-back'))
+summary(model1)
+
+model2 <-lmer(  pupil_size_stim_norm ~ delta_pac*strategy + n_back.x + block + (1|position)  + (1|sub), subset(dfplot_clean,task.x=='ax-cpt'))
+summary(model2)
+
+
+plot_model(model1, type = "int", show.data = FALSE) +  # Effect plot for fixed effects
+  theme_minimal(base_size = 14) +
+  labs(title = "N-back",
+       x = "Predicted delta PAC",
+       y = "Pupil size" ) +
+  theme(legend.position = "top")
+
+plot_model(model2, type = "int", show.data = FALSE) +  # Effect plot for fixed effects
+  theme_minimal(base_size = 14) +
+  labs(title = "AX-CPT",
+       x = "Predicted delta PAC" ,
+       y = "Pupil size") +
+  theme(legend.position = "top")
+
+
+# ms ~ pac
+model1 <-lmer( microsacc_stim ~  pac3*strategy + n_back.x + block + (1|position) + (1|sub), subset(dfplot_clean,task.x=='n-back'))
+summary(model1)
+
+model2 <-lmer( microsacc_stim_norm ~  pac3_low*strategy + n_back.x + block + (1|position)  + (1|sub), subset(dfplot_clean,task.x=='ax-cpt'))
+summary(model2)
