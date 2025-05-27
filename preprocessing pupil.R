@@ -1,3 +1,5 @@
+# importing modules -----
+
 require(eyelinker)
 require(dplyr)
 require(tidyr)
@@ -7,7 +9,9 @@ require(stringr)
 library("readxl")
 library(readr)
 
-sub_list <- read_csv("/Users/ali/Desktop/Experiment/check_list.csv")
+
+# adding the pariticipants info -------
+sub_list <- read_csv("/Users/ali/Documents/Experiment/check_list.csv")
 rows_to_remove <- c(1, 2, 3, 4, 5, 6, 10, 19, 20,  32, 33, 34, 43, 45, 46, 53) #bad files
 sub_list <- sub_list[-rows_to_remove, ] # recordings to remove
 sub_list <- sub_list[!is.na(sub_list$sub), ] # removing the NaN
@@ -19,18 +23,20 @@ for (isub in 1:nrow(sub_list)){
   
   sub <- sub_list$sub[isub]
   strategy <- sub_list$strategy[isub]
-
+  
   dat <- read.asc(paste0("/Volumes/x9/INITIAL_DATABASE/",sub,"/",sub,"-",strategy,"-test.asc"))
   
   viewing_distance <- 80 #cm to monitor
-  # importing pupil data
+  
+  # importing time, pupil, coordinates ------
   dfp <- data.frame(time = dat$raw$time, ps = dat$raw$ps, x_deg = dat$raw$xp/viewing_distance, y_deg = dat$raw$yp/viewing_distance)
   
-  # adding events
+  # Events -------
   dfp <- merge(dat$msg, dfp, by = "time", all = TRUE)
   
-  #adding blinks
+  #blinks -------
   dfp$blink <- 0
+  
   # Loop through each blink period and mark the blink column
   for (i in 1:length(dat[["blinks"]][["stime"]])) {
     # Define the blink window for this blink
@@ -44,11 +50,11 @@ for (isub in 1:nrow(sub_list)){
   #removeing blinks
   dfp[dfp$blink == 1, c("ps", "x_deg", "y_deg")] <- NA
   
-  #adding fixation
+  #adding fixation ----
   dfp$fix <- 0
   # Loop through each fix period and mark the fix column
   for (i in 1:length(dat[["fix"]][["stime"]])) {
-    # Define the blink window for this blink
+    # Define the fixation window for this fixation
     start_time <- dat[["fix"]][["stime"]][i]
     end_time <- dat[["fix"]][["etime"]][i]
     
@@ -63,7 +69,7 @@ for (isub in 1:nrow(sub_list)){
     labs(title = paste("Heatmap of Eye Positions |", sub, "-", strategy), x = "Horizontal", y = "Vertical")
   print(hfig)
 
-  # block indices -------
+# block indices ------
   dfp$text <- gsub("200 1", "1", dfp$text)
   
   # Loop through the dataframe to update the text
@@ -99,10 +105,6 @@ for (isub in 1:nrow(sub_list)){
   dfp <- dfp %>%
     mutate(velocity = sqrt(vx^2 + vy^2))
   
-  # Apply the microsaccade detection criterion on fixation period
-  dfp <- dfp %>%
-    mutate(ms = ifelse(fix == 1 & ((vx / threshold_x)^2 + (vy / threshold_y)^2 > 1), 1, 0))
-
   lambda <- 6 # threshold
   
   # Calculate thresholds for microsaccade detection
@@ -134,9 +136,12 @@ for (isub in 1:nrow(sub_list)){
   cat('|',rep("#", isub), rep("-", nrow(sub_list) - isub),'|\n', sep = "")
 }
 
+
+# Plot peak velocity vs magnitude of all -----
+
 # Combine all data frames into one
 peaks_combined <- bind_rows(peaks_list)
-# Plot peak velocity vs magnitude
+
 fig <- ggplot(peaks, aes(x = magnitude, y = velocity)) +
   geom_point(color = 'blue') +
   geom_smooth(method = 'lm', color = 'red', se = FALSE) +  # Optional: Add a trend line
