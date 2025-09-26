@@ -1,5 +1,6 @@
 #modules------
 library(readr)
+library(simr)
 library("readxl")
 require(ggplot2)
 library(ggrepel)
@@ -27,13 +28,20 @@ minmax_normalize <- function(x) {
 }
 
 # if you already combined and just want to load again
-mother_dfa <- read_csv(paste0("/Users/ali/Documents/Experiment/dfa-test.csv"))
+mother_dfa <- read_csv(paste0("/Users/ali/Documents/Experiment/dfa-blocks.csv"))
 dfa <- mother_dfa
 
 
-fig <- ggplot(dfa, aes(x = m_correct, y = score, color = as.factor(n_back))) +  # Add color
+fig <- ggplot(dfa, aes(x = slider_time.response, y = rt_h)) +
   stat_smooth(method = "lm", formula = y ~ poly(x, 1), se = TRUE) +
-  geom_point() +
+  geom_point(position = position_jitter(width = 0.1), alpha = 0.2) +
+  
+  # Add mean ± SE line automatically
+  #stat_summary(fun = mean, geom = "line", aes(group = strategy), size = 1) +
+  #stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2) +
+  
+  #ylim(0, 20) + 
+  
   theme_minimal() +
   theme(
     legend.position = c(0, 0),
@@ -46,20 +54,22 @@ fig <- ggplot(dfa, aes(x = m_correct, y = score, color = as.factor(n_back))) +  
     plot.caption = element_text(size = 20, color = "darkgreen"),
     plot.title = element_text(size = 22, hjust = 0.5)
   ) +
-  facet_wrap(~task) +
-  labs(color = "N-Back")  # Optional: label the legend
+  facet_wrap(~strategy) +
+  labs(
+    x = "Reported Effort",
+    y = "Hits' RT (sec)"
+  )
 
 fig
 
 
 
 
-
 dfa_task <- subset(dfa,task=="n-back")
 
-model <- lmer( score ~  m_correct*strategy + n_back + n_block + (1|sub) , subset(dfa,task=='n-back'))
+model <- lmer(  slider_time.response ~  rt_h* strategy + n_block + (1|sub) , subset(dfa,task=='ax-cpt'))
 summary(model)
-model <- lmer( score ~  m_correct*n_back + n_block + (1|sub) , subset(dfa,task=='ax-cpt'))
+model <- lmer( slider_time.response ~ 0 +  rt_h* strategy + n_block + (1|sub) , subset(dfa,task=='ax-cpt'))
 summary(model)
 
 ##import -----------------------------------------------------------------------------------
@@ -84,7 +94,7 @@ for (isub in 1:nrow(sub_list)) {
   sub <- sub_list$sub[isub]
   strategy <- sub_list$strategy[isub]
   
-  df <- read_csv(paste0(indir,sub,"/",sub,"-",strategy,"-test.csv"))
+  df <- read_csv(paste0(indir,sub,"/",sub,"-",strategy,"-blocks.csv"))
   
   
   # in case this subject didn't have something....
@@ -207,7 +217,8 @@ na2 <- sum(is.na(dfa))
 
 print((na2 - na1)/(nrow(dfa)*ncol(dfa)))
 
-hist(dfa$pac3_o, ylab="Frequency", col="blue", border="black")
+h_df <- subset(dfa,task == 'ax-cpt')
+hist(h_df$score, ylab="Frequency", col="blue", border="black")
 
 dfa$recording <- interaction(sub,strategy)
 
@@ -218,8 +229,8 @@ dfa$group <- ifelse(dfa$strategy %in% c("static", "reactive"),
 
 mother_dfa <- dfa
 
-write.csv(dfa, paste0("/Volumes/x9/INITIAL_DATABASE/dfa-test.csv"))
-write.csv(dfa, paste0("/Users/ali/Documents/Experiment/dfa-test.csv"))
+write.csv(dfa, paste0("/Volumes/x9/INITIAL_DATABASE/dfa-blocks.csv"))
+write.csv(dfa, paste0("/Users/ali/Documents/Experiment/dfa-blocks.csv"))
 
 #dfa <- dfa[dfa$m_correct <= dfa$score, ] # Remove rows where m_correct > score
 
@@ -267,6 +278,7 @@ df_rol <- subset(dfa_fce,strategy=='rolling')
 df_sta <- subset(dfa_fce,strategy=='static')
 
 
+wilcox.test(dfa_fce$mean_fce, mu = 0)
 
 wilcox.test(df_pro$mean_fce, mu = 0)
 wilcox.test(df_rea$mean_fce, mu = 0)
@@ -274,22 +286,32 @@ wilcox.test(df_rol$mean_fce, mu = 0)
 wilcox.test(df_sta$mean_fce, mu = 0)
 
 
-ggplot(dfa_fce, aes(x = factor(m_correct), y = mean_fce, fill = factor(m_correct))) +
+ggplot(dfa_fce, aes(x = factor(m_correct), y = mean_fce/100, fill = factor(m_correct))) +
   geom_boxplot(alpha = 0.6) +
-  labs(title = "Free choice effort",
-       x = "Required score",
-       y = "FCE") +
+  labs(
+    title = "Free choice effort",
+    x = "Required score",
+    y = "FCE"
+  ) +
   theme_minimal() +
   theme(
-    legend.position = "none",  # Hide legend
-    plot.title = element_text(size = 18, face = "bold"),  # Bigger title
-    axis.title.x = element_text(size = 18),  # Bigger x-axis label
-    axis.title.y = element_text(size = 18),  # Bigger y-axis label
-    axis.text.x = element_text(size = 18),  # Bigger x-axis ticks
-    axis.text.y = element_text(size = 18)   # Bigger y-axis ticks
+    legend.position = "none",
+    plot.title = element_text(size = 18, face = "bold"),
+    axis.title.x = element_text(size = 18),
+    axis.title.y = element_text(size = 18),
+    axis.text.x = element_text(size = 18),
+    axis.text.y = element_text(size = 18),
+    strip.text = element_text(size = 16, face = "bold")  # Facet title font
   ) +
   facet_wrap(~ strategy, scales = "fixed") +
-  expand_limits(y = 0)  # Ensure y-axis includes zero
+  scale_fill_manual(
+    values = c("4" = "blue", "8" = "green", "12" = "red")  # Fill colors
+  ) +
+  scale_y_continuous(breaks = c(0, 1)) +
+  expand_limits(y = 0) 
+
+
+
 
 
 
@@ -389,7 +411,7 @@ dfa$effort_dt <- dfa$slider_effort.response - lm(slider_effort.response ~ 0 + n_
 
 dfa_nofail <- dfa[dfa$m_correct <= dfa$score, ] # Remove rows where m_correct > score
 
-model <- lmer(effort_dt ~ arousal_dt*strategy + valence_dt*strategy  + (1|sub), data = dfa)
+model <- lmer(effort_dt ~  arousal_dt*strategy + valence_dt*strategy  + (1|sub), data = dfa)
 summary(model)
 
 model <- lmer( effort_dt ~ 0 + free_choice*strategy  + (1|sub), data = dfa)
@@ -412,10 +434,74 @@ fig<-ggplot(dfa, aes(x = valence_dt, y = arousal_dt, color = effort_dt)) +
     aes(x0 = 0, y0 = 0, r = 100), # Center (x0, y0) and radius (r)
     color = "black", linetype = "solid"
   ) +
-  theme_minimal() + facet_wrap(~ strategy, scales = "fixed")
+  theme_minimal() + facet_wrap(~ sub, scales = "fixed")
 
 fig
 ggsave(paste0("/Volumes/x9/results/allsubs/figure/phenomenology_sub.png"), plot = fig, width = 10, height = 6, dpi = 300)
+
+
+
+
+
+# Step 1: Reshape to long format
+df_long <- dfa %>%
+  pivot_longer(cols = c(valence_dt, arousal_dt),
+               names_to = "Measure",
+               values_to = "Value") %>%
+  mutate(Measure = recode(Measure,
+                          valence_dt = "Valence",
+                          arousal_dt = "Arousal"))
+
+# Step 2: Calculate p-values per facet and measure
+pvals <- df_long %>%
+  group_by(strategy, Measure) %>%
+  do(tidy(lm(Value ~ effort_dt, data = .))) %>%
+  filter(term == "effort_dt") %>%
+  mutate(
+    label = paste0("p = ", signif(p.value, 1)),
+    y = case_when(
+      Measure == "Valence" ~ Inf,
+      Measure == "Arousal" ~ Inf - 3
+    )
+  )
+
+# Step 3: Plot
+fig <- ggplot(df_long, aes(x = effort_dt, y = Value, color = Measure)) +
+  geom_point(position = position_jitter(width = 0.1), alpha = 0.2) +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 1), se = TRUE) +
+  facet_wrap(~strategy, scales = "fixed") +
+  geom_text(
+    data = pvals,
+    aes(x = Inf, y = y, label = label, color = Measure),
+    hjust = 1.1, vjust = 1.5,
+    inherit.aes = FALSE,
+    size = 5
+  ) +
+  scale_color_manual(
+    values = c("Valence" = "blue", "Arousal" = "red")
+  ) +
+  labs(
+    x = "Reported Effort",
+    y = "Reported Valence and Arousal",
+    color = "Relationship"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = c(1, 1),
+    legend.justification = c(1, 1),
+    axis.title = element_text(size = 18),
+    axis.text = element_text(size = 18),
+    legend.title = element_text(size = 18),
+    legend.text = element_text(size = 18),
+    strip.text = element_text(size = 18),
+    plot.caption = element_text(size = 20, color = "darkgreen"),
+    plot.title = element_text(size = 22, hjust = 0.5)
+  )
+
+fig
+
+
+
 
 
 plot_ly(dfa, x = ~arousal_dt, y = ~valence_dt, z = ~effort_dt,
@@ -425,6 +511,14 @@ plot_ly(dfa, x = ~arousal_dt, y = ~valence_dt, z = ~effort_dt,
          scene = list(xaxis = list(title = "Arousal"),
                       yaxis = list(title = "Valence"),
                       zaxis = list(title = "Effort")))
+
+# power post hoc -----------
+model <- lmer(effort_dt ~ arousal_dt + valence_dt  + (1|sub), data = dfa)
+summary(model)
+# Power for detecting the effect
+powerSim(model, fixed("valence_dt", "t"), nsim = 100)
+
+
 
 
 ##Table for strategy comparison -----
@@ -466,15 +560,15 @@ summary(lmer( score  ~  slider_effort.response + n_block + (1|sub), subset(dfa,s
 
 # divided by difficulty level
 dfa_rolling <- subset(dfa,strategy=='rolling')
-summary(lmer( score  ~  slider_effort.response + n_block + (1|sub), subset(dfa_rolling,n_back ==1)))
-summary(lmer( score  ~  slider_effort.response + n_block + (1|sub), subset(dfa_rolling,n_back ==2)))
-summary(lmer( score  ~  slider_effort.response + n_block + (1|sub), subset(dfa_rolling,n_back ==3)))
+summary(lmer( score  ~  ps + n_block + (1|sub), subset(dfa_rolling,n_back ==1)))
+summary(lmer( score  ~  ps + n_block + (1|sub), subset(dfa_rolling,n_back ==2)))
+summary(lmer( score  ~  ps + n_block + (1|sub), subset(dfa_rolling,n_back ==3)))
 
 
 dfa_static <- subset(dfa,strategy=='static')
-summary(lmer( score  ~  slider_effort.response + n_block + (1|sub), subset(dfa_static,n_back ==1)))
-summary(lmer( score  ~  slider_effort.response + n_block + (1|sub), subset(dfa_static,n_back ==2)))
-summary(lmer( score  ~  slider_effort.response + n_block + (1|sub), subset(dfa_static,n_back ==3)))
+summary(lmer( score  ~  ps + n_block + (1|sub), subset(dfa_static,n_back ==1)))
+summary(lmer( score  ~  ps + n_block + (1|sub), subset(dfa_static,n_back ==2)))
+summary(lmer( score  ~  ps + n_block + (1|sub), subset(dfa_static,n_back ==3)))
 
 dfa_proactive <- subset(dfa,strategy=='proactive')
 summary(lmer( score  ~  slider_effort.response + n_block + (1|sub), subset(dfa_proactive,n_back ==1)))
@@ -486,6 +580,19 @@ dfa_reactive <- subset(dfa,strategy=='reactive')
 summary(lmer( score  ~  slider_effort.response + n_block + (1|sub), subset(dfa_reactive,n_back ==1)))
 summary(lmer( score  ~  slider_effort.response + n_block + (1|sub), subset(dfa_reactive,n_back ==2)))
 summary(lmer( score  ~  slider_effort.response + n_block + (1|sub), subset(dfa_reactive,n_back ==3)))
+
+# power test post hoc -----------
+
+
+# Fit the original model
+model <- lmer(score ~ ps + n_block + (1 | sub),
+              data = subset(dfa_rolling, n_back == 1))
+
+summary(model)
+# Power for detecting the effect
+powerSim(model, fixed("ps", "t"), nsim = 100)
+
+
 
 ##P3a and P3b -----------------
 model <- lmer( p3a ~ 0 + n_back*strategy  + n_block + (1|sub), subset(dfa,task=='ax-cpt'))
@@ -506,8 +613,8 @@ summary(lmer( p3a ~ slider_effort.response*strategy + n_back + n_block + (1|sub)
 summary(lmer( p3a ~  slider_effort.response*strategy + n_back + n_block  + (1|sub), subset(dfa,task=='n-back')))
 
 
-summary(lmer( p3b ~  slider_effort.response*strategy + n_block + n_block + (1|sub), dfa))
-summary(lmer( p3b ~ slider_effort.response*strategy + factor(n_back)+ n_block + (1|sub), dfa))
+summary(lmer( p3b ~  slider_valenc.response*strategy + n_block + n_block + (1|sub), subset(dfa,task=='ax-cpt')))
+summary(lmer( p3b ~ slider_valenc.response*strategy + n_block + n_block+ (1|sub), subset(dfa,task=='n-back')))
 
 ##n2s -----------------
 summary(lmer( n2s ~  slider_effort.response*strategy + n_back + n_block + (1|sub), subset(dfa,task=='n-back')))
@@ -542,16 +649,16 @@ summary(lmer_model)
 
 ##pac----
 
-fig <- ggplot(dfa, aes(x = slider_effort.response, y = pac3_f, color = strategy)) +
+fig <- ggplot(dfa, aes(x = slider_effort.response, y = pac3_f*100)) +
   stat_smooth(aes(group = factor(strategy)), method = "lm", formula = y ~ poly(x, 1), se = TRUE) +
   theme_minimal() +
-  labs(x = "Pupil Size", y = "Delta PAC", color = "Strategy") +
+  #labs(x = "Pupil Size", y = "Delta PAC", color = "Strategy") +
   theme(legend.position = c(0, 0), legend.justification = c(0, 0),
     axis.title = element_text(size = 18),    # Increase axis title font size
     axis.text = element_text(size = 18),      # Increase axis labels font size
     legend.title = element_text(size = 18),   # Increase legend title font size
     legend.text = element_text(size = 18),    # Increase legend text font size
-    strip.text = element_text(size = 18)) + facet_wrap(~task, scales = 'fixed')
+    strip.text = element_text(size = 18)) + facet_wrap(~strategy, scales = 'fixed')
 fig
 
 ggsave(filename = "/Volumes/x9/results/allsubs/figure/ps~pac2-pac1.png",  # The name of the output file
@@ -740,6 +847,41 @@ summary(lmer( rt_h ~ ps_norm*strategy + n_back + block + (1|sub), subset(dfa,tas
 summary(lmer( rt_h ~ ms_norm*strategy + n_back + block + (1|sub), subset(dfa,task=='ax-cpt')))
 summary(lmer( rt_h ~ ms_norm*strategy + n_back + block + (1|sub), subset(dfa,task=='n-back')))
 
+#plot RT --------------
+library(lme4)
+library(ggplot2)
+library(ggeffects)
+library(dplyr)
+
+# Fit the models for each task
+model_ax <- lmer(rt_h ~ slider_effort.response * strategy + n_back + n_block + (1 | sub),
+                 data = subset(dfa, task == 'ax-cpt'))
+
+model_nb <- lmer(rt_h ~ slider_effort.response * strategy + n_back + n_block + (1 | sub),
+                 data = subset(dfa, task == 'n-back'))
+
+# Get predicted values for plotting
+pred_ax <- ggpredict(model_ax, terms = c("slider_effort.response", "strategy"))
+pred_nb <- ggpredict(model_nb, terms = c("slider_effort.response", "strategy"))
+
+# Add task labels
+pred_ax$task <- "AX-CPT"
+pred_nb$task <- "N-Back"
+
+# Combine predictions
+pred_all <- bind_rows(pred_ax, pred_nb)
+
+# Plot
+ggplot(pred_all, aes(x = x, y = predicted, color = group)) +
+  geom_line(size = 1) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = group), alpha = 0.2, color = NA) +
+  facet_wrap(~ group) +
+  labs(
+    x = "Self-reported Effort",
+    y = "Reaction Time"
+  ) +theme_minimal(base_size = 18)
+
+
 
 ## pupil size ------
 
@@ -757,26 +899,27 @@ gg <- gg + geom_density(alpha = 0.5)
 #gg <- gg + xlim(0, 100)
 # Facet by both sub and n_back
 gg <- gg + facet_wrap(~strategy, scales = "fixed")
-gg <- gg + labs(title = paste0("Kernel Density Estimates ",s),
+gg <- gg + labs(title = paste0("Kernel Density Estimates "),
                 x = "Value",
                 y = "Density")
 print(gg)
 ggsave(paste0("/Volumes/x9/results/allsubs/figure/density_all.png"), plot = gg, width = 10, height = 6, dpi = 300)
 
+dfa$f <- dfa$slider_valenc.response
 grouped_stats <- dfa %>%
   group_by(strategy) %>%
   summarise(
-    mean = mean(slider_effort.response, na.rm = TRUE),
-    median = median(slider_effort.response, na.rm = TRUE),
-    sd = sd(slider_effort.response, na.rm = TRUE),
-    var = var(slider_effort.response, na.rm = TRUE),
-    skewness = skewness(slider_effort.response, na.rm = TRUE),
-    kurtosis = kurtosis(slider_effort.response, na.rm = TRUE),
-    min = min(slider_effort.response, na.rm = TRUE),
-    max = max(slider_effort.response, na.rm = TRUE),
-    range = max(slider_effort.response, na.rm = TRUE) - min(slider_effort.response, na.rm = TRUE),
-    n = sum(!is.na(slider_effort.response)),
-    n_na = sum(is.na(slider_effort.response))
+    mean = mean(f, na.rm = TRUE),
+    median = median(f, na.rm = TRUE),
+    sd = sd(f, na.rm = TRUE),
+    var = var(f, na.rm = TRUE),
+    skewness = skewness(f, na.rm = TRUE),
+    kurtosis = kurtosis(f, na.rm = TRUE),
+    min = min(f, na.rm = TRUE),
+    max = max(f, na.rm = TRUE),
+    range = max(f, na.rm = TRUE) - min(f, na.rm = TRUE),
+    n = sum(!is.na(f)),
+    n_na = sum(is.na(f))
   )
 print(grouped_stats)
 
@@ -822,11 +965,10 @@ print(mean_corr)
 dfa$valence_dt <- dfa$slider_valenc.response - lm(slider_valenc.response ~  0 + n_block + score  , data = dfa)$fitted.values
 dfa$valence_dt <-minmax_normalize(dfa$valence_dt)
 
-y_values <- c('microsacc','ps_norm','ms_norm','delta_ps_ms','theta','alpha','beta','theta_beta','gamma','pac1','pac2','diff_pac','p3','p3_norm','p2','p2_norm','n2','n2_norm','time',"effort","valence", "dprime",'g','rt_h','ps1','ps2','ms1','ms2','pac1','pac2','delta_ps','delta_ms','delta_pac')
 
 y_values <- c('slider_valenc.response','slider_time.response','slider_effort.response','g','pac1','pac2','pac1_low','pac2_low','pac1_high','pac2_high','ms1','ms2','delta_ms','delta_pac')
 
-y_values <- c('p3a')
+y_values <- c('ps')
 
 # Loop over each y value
 for (y in y_values) {
@@ -928,7 +1070,7 @@ for (x in x_values) {
 x_values <- c("effort",'p3','n2','ps_norm','microsacc','ms_norm','rt_h','diff_ps_ms','diff_pac')
 y_values <- c("score","dprime",'g', "time", "rt_h", "effort") 
 
-x_values <- c("ps", "pac3_o","pac3_f")
+x_values <- c("ps")
 y_values <- c("score") 
 
 # Loop over each y_value

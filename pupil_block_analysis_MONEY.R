@@ -18,7 +18,7 @@ library(mgcv)
 # this function compute the Evoke Pupillary Response of 
 # pupil size, microsaccade, blink, magnitude of each block 
 # for all participants
-
+# df, bf, 'stim', 1, 0, 1000, sub, strategy
 process_block_data <- function(df,bf,event,num,pre,post,sub_name,strategy_name) {
   block_indices <- which(df$text == "block")
   post_position = post
@@ -26,7 +26,7 @@ process_block_data <- function(df,bf,event,num,pre,post,sub_name,strategy_name) 
   step_size = post_position - pre_position
   
   if (length(block_indices) != length(bf$n_block)) {
-    print(paste0("The number of blocks in pupil is less than the behaviour. Skipping : ",sub_name,' ',strategy_name))
+    print(paste0("The number of blocks in pupil is not the same as the behaviour. Skipping : ",sub_name,' ',strategy_name))
     return(NULL)  # Skips the function and returns NULL
   }
   
@@ -48,10 +48,10 @@ process_block_data <- function(df,bf,event,num,pre,post,sub_name,strategy_name) 
     #initilizing the vectors
     pupil_sizes <- vector("list", step_size + 1)
     microsacc <- vector("list", step_size + 1)
-
+    
     #pupil
     for (j in 0:step_size) {
-      temp <- df$ps[trial_indices + j] # storing the jth position of the trial of this block
+      temp <- df$psc[trial_indices + j] # storing the jth position of the trial of this block
       pupil_sizes[[j+1]] <- mean(temp, na.rm = TRUE) #averaging the jth position
     }
     
@@ -61,7 +61,7 @@ process_block_data <- function(df,bf,event,num,pre,post,sub_name,strategy_name) 
       microsacc[[j + 1]] <- mean(temp, na.rm = TRUE) #averaging the jth position
     }
     
-
+    
     block_data <- data.frame(
       sub = sub_name,
       strategy = strategy_name,
@@ -70,15 +70,13 @@ process_block_data <- function(df,bf,event,num,pre,post,sub_name,strategy_name) 
       pupil_size = unlist(pupil_sizes),
       microsacc = unlist(microsacc),
       effort = round(bf$slider_effort.response[i],2),
-      pac = bf$pac3[i],
-      pac_low = bf$pac3_low[i],
-      pac_high = bf$pac3_high[i],
-      performance = bf$g[i],
+      performance = bf$score[i],
       rt = bf$rt_h[i],
       n_back = bf$n_back[i]
     )
     all_data[[i]] <- block_data
   }
+  
   return(do.call(rbind, all_data))
 }
 
@@ -88,10 +86,8 @@ minmax_normalize <- function(x,a) {(x - min(a, na.rm = TRUE)) / (max(a, na.rm = 
 
 # ----------------------- import after running the preprocessing pupil.R
 
-sub_list <- read_csv("/Users/ali/Documents/Experiment/check_list.csv")
-rows_to_remove <- c(1, 2, 3, 4, 5, 6, 10, 19, 20, 32, 33, 34, 39, 42, 43, 45, 46, 53, 54) #bad files
-sub_list <- sub_list[-rows_to_remove, ] # recordings to remove
-sub_list <- sub_list[!is.na(sub_list$sub), ] # removing the NaN
+# adding the pariticipants info -------
+sub_list <- data.frame(sub = 'sub03',strategy = 'rolling')
 
 dfplot_list <- list()
 
@@ -101,8 +97,8 @@ for (isub in 1:nrow(sub_list)) {
   sub <- sub_list$sub[isub]
   strategy <- sub_list$strategy[isub]
   
-  df <- read.csv(paste0("/Volumes/x9/INITIAL_DATABASE/",sub,"/",sub,"-",strategy,"-test-pupil.csv"), encoding = "UTF-8")
-  bf <- read.csv(paste0("/Volumes/x9/INITIAL_DATABASE/",sub,"/",sub,"-",strategy,"-test.csv"), encoding = "UTF-8")
+  df <- read.csv(paste0("/Volumes/x9/INITIAL_DATABASE_MONEY/",sub,"/",sub,"-",strategy,"-test-pupil.csv"), encoding = "UTF-8")
+  bf <- read.csv(paste0("/Volumes/x9/INITIAL_DATABASE_MONEY/",sub,"/",sub,"-",strategy,"-test.csv"), encoding = "UTF-8")
   
   # Update "10", "20", and "30" messages to "stim"
   df$text[df$text == "10"] <- "stim"
@@ -117,38 +113,6 @@ for (isub in 1:nrow(sub_list)) {
   # EPR function of on rest
   plot_data_rest <- process_block_data(df, bf, 'rest', 1, 0, 1000, sub,strategy)
   
-  # removing outliers
-  na1 <- sum(is.na(plot_data_stim))
-  repeat {
-    # Initialize a variable to track if NAs were added
-    previous_na_count <- sum(is.na(plot_data_stim))
-    
-    # Iterate through each column of plot_data_stim
-    for (col in names(plot_data_stim)) {
-      # Check if the column is numeric
-      if (is.numeric(plot_data_stim[[col]])) {
-        # Replace outliers with NA for the current column
-        plot_data_stim[['pupil_size']][abs(scale(plot_data_stim[['pupil_size']])) >= 3] <- NA
-        plot_data_stim[['microsacc']][abs(scale(plot_data_stim[['microsacc']])) >= 3] <- NA
-        
-        plot_data_rest[['pupil_size']][abs(scale(plot_data_rest[['pupil_size']])) >= 3] <- NA
-        plot_data_rest[['microsacc']][abs(scale(plot_data_rest[['microsacc']])) >= 3] <- NA
-      }
-    }
-    
-    # Check if no more NAs were added
-    current_na_count <- sum(is.na(plot_data_stim))
-    
-    # Exit the loop if no new NAs were added
-    if (current_na_count == previous_na_count) {
-      break
-    }
-  }
-  
-  na2 <- sum(is.na(plot_data_stim))
-  
-  print(paste("Percentage of the outlier is:", (na2 - na1) / (nrow(plot_data_stim) * ncol(plot_data_stim))))
-
   
   # renaming 
   # List of columns to modify
@@ -180,15 +144,15 @@ for (isub in 1:nrow(sub_list)) {
     ungroup()
   
   bf$ps <- bs_avg$ps_norm
-  write.csv(bf, paste0("/Volumes/x9/INITIAL_DATABASE/",sub,"/",sub,"-",strategy,"-test.csv"))
+  write.csv(bf, paste0("/Volumes/x9/INITIAL_DATABASE_MONEY/",sub,"/",sub,"-",strategy,"-test.csv"))
   
   
   # Add the processed data frame to the list
   dfplot_list[[isub]] <- plot_data
-
+  
   
   cat('|',rep("#", isub), rep("-", nrow(sub_list) - isub),'|\n', sep = "")
-  }
+}
 
 
 # Combine all data frames into one
@@ -199,12 +163,13 @@ dfplot <- dfplot %>%
 
 
 # save the final dfplot
-write.csv(dfplot, paste0("/Volumes/x9/INITIAL_DATABASE/dfplot_stim_lambda_6-mai2025.csv"))
+write.csv(dfplot, paste0("/Volumes/x9/INITIAL_DATABASE_MONEY/dfplot_stim_lambda_6.csv"))
 
 #============================================= plotting =================
-# for pupil size use /Volumes/x9/INITIAL_DATABASE/dfplot_stim_lambda_6.csv
-dfplot <- read_csv(paste0('/Volumes/x9/INITIAL_DATABASE/dfplot_stim_lambda_6-mai2025.csv'))
 
+dfplot <- read_csv(paste0('/Volumes/x9/INITIAL_DATABASE_MONEY/dfplot_stim_lambda_6.csv'))
+
+dfplot <- dfplot[!is.na(dfplot$n_back), ]
 
 # converting to time and hz
 dfplot$time <- round(dfplot$position/500,1)
@@ -240,34 +205,37 @@ print(fig)
 
 
 
-ggsave(filename = "/Volumes/x9/results/allsubs/figure/EPR_ps_6_strategy.png",  # The name of the output file
+ggsave(filename = "/Volumes/x9/results_MONEY/allsubs/figure/EPR_ps_6_strategy.png",  # The name of the output file
        plot = fig,                    # The ggplot object you created
        width = 8, height = 6, unit = "in",  # Size of the output (can also be in cm or mm)
        dpi = 300)                     # Resolution in dots per inch
 
 # Generate the plot
 fig <- ggplot(df_agg, aes(x = time, y = ms, 
-                          group = effort_category,
-                          color = effort_category)) +
-  geom_smooth(method = "loess", span = 0.2, se = TRUE) +
+                          group = factor(n_back),
+                          color = factor(n_back))) +
+  geom_smooth(method = "loess", span = 0.5, se = TRUE) +
   geom_vline(xintercept = 0, linetype = "dashed", color = "black") +  # Trial onset line
   geom_vline(xintercept = 1, linetype = "dashed", color = "black") +  # Trial offset line
-  annotate("text", x = 0, y = 0.4, label = "Onset",  vjust = -0.5, hjust = 0, size = 4, fontface = "bold") +  # Label for the line
-  annotate("text", x = 1, y = 0.4, label = "Offset",  vjust = -0.5, hjust = 0, size = 4, fontface = "bold") +  # Label for the line
+  annotate("text", x = 0, y = 0.1, label = "Onset",  vjust = -0.5, hjust = 0, size = 4, fontface = "bold") +  # Label for the line
+  annotate("text", x = 1, y = 0.1, label = "Offset",  vjust = -0.5, hjust = 0, size = 4, fontface = "bold") +  # Label for the line
   theme_minimal(base_size = 16) +  # Increase font size
-  scale_color_manual(values = c("Rest" = "#00008B", "High effort" = "#8B0000", "Low effort" = "#FFC0CB")) +
+  scale_x_continuous(name = "Time (sec)") +
+  scale_color_manual(
+    name = "",
+    values = c("1" = "blue", "2" = "green", "3" = "red")
+  ) +
   labs(title = "Stim-locked EPR of Microsaccade",
        x = "Seconds",
        y = "Microsaccade (Hz)",
        color = "") +
-  theme(legend.position = c(0.8, 0.2),
-        legend.key = element_rect(fill = NA))+
+  theme(legend.position = c(0.8, 0.2),legend.key = element_rect(fill = NA))+
   scale_x_continuous(breaks = seq(0, 2, by = 0.2))#+ facet_wrap(~task)
 
 # Print the plot
 print(fig)
 
-ggsave(filename = "/Volumes/x9/results/allsubs/figure/EPR_ms_6_all.png",  # The name of the output file
+ggsave(filename = "/Volumes/x9/results_MONEY/allsubs/figure/EPR_ms_6_all.png",  # The name of the output file
        plot = fig,                    # The ggplot object you created
        width = 8, height = 6, unit = "in",  # Size of the output (can also be in cm or mm)
        dpi = 300)                     # Resolution in dots per inch
@@ -351,9 +319,9 @@ dfplot_avg <- dfplot_loaded %>%
   group_by(sub,task, strategy, n_back, n_block,effort, pac, pac_low,rt,performance) %>%
   filter(n_distinct(position) > 1) %>%  # Ensure at least 2 unique values
   summarise(
-            ps = mean(pupil_size_stim, na.rm = TRUE),
-            ms = mean(microsacc_stim, na.rm = TRUE),
-            .groups = "drop")
+    ps = mean(pupil_size_stim, na.rm = TRUE),
+    ms = mean(microsacc_stim, na.rm = TRUE),
+    .groups = "drop")
 
 
 lmer_model <- lmer(ps ~ effort * strategy + n_back + n_block + (1 | sub), data = subset(dfplot_avg,task=='ax-cpt'))
@@ -381,7 +349,7 @@ for (isub in 1:nrow(sub_list)) {
   sub <- sub_list$sub[isub]
   strategy <- sub_list$strategy[isub]
   
-  df <- read.csv(paste0("/Volumes/x9/INITIAL_DATABASE/", sub, "/", sub, "-", strategy, "-test-pupil.csv"),
+  df <- read.csv(paste0("/Volumes/x9/INITIAL_DATABASE_MONEY/", sub, "/", sub, "-", strategy, "-test-pupil.csv"),
                  encoding = "UTF-8")
   
   # Plot for this subject-strategy only
@@ -419,7 +387,7 @@ for (isub in 1:nrow(sub_list)) {
   strategy <- sub_list$strategy[isub]
   
   # Read data (prefer fread if large)
-  df <- read.csv(paste0("/Volumes/x9/INITIAL_DATABASE/", sub, "/", sub, "-", strategy, "-test-pupil.csv"),
+  df <- read.csv(paste0("/Volumes/x9/INITIAL_DATABASE_MONEY/", sub, "/", sub, "-", strategy, "-test-pupil.csv"),
                  encoding = "UTF-8")
   
   # Calculate mean x/y positions for this subject-strategy

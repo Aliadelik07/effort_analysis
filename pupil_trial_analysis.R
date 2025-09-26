@@ -67,13 +67,17 @@ for (isub in 1:nrow(sub_list)) {
     if (length(trial_indices) == 0) next
     
     avg_ps <- numeric(length(trial_indices))
+    avg_ms <- numeric(length(trial_indices))
     ms_offset <- rep(NA_real_, length(trial_indices))
+    
     
     for (j in seq_along(trial_indices)) {
       idx <- trial_indices[j]
       
       if ((idx + sample) <= length(df$ps_norm)) {
-        avg_ps[j] <- mean(c(df$ps_norm[idx], df$ps_norm[idx + sample]), na.rm = TRUE)
+        avg_ps[j] <- mean(df$ps_norm[idx:(idx + sample)], na.rm = TRUE)
+       
+        avg_ms[j] <- sum(df$ms[idx:(idx + sample)], na.rm = TRUE)* 0.5  # to make it Hz
         
         ms_window <- df$ms[idx:(idx + sample)]
         one_indices <- which(ms_window == 1)
@@ -82,6 +86,7 @@ for (isub in 1:nrow(sub_list)) {
         }
       } else {
         avg_ps[j] <- NA
+        avg_ms[j] <- NA
         ms_offset[j] <- NA
       }
     }
@@ -95,6 +100,7 @@ for (isub in 1:nrow(sub_list)) {
       n_block = bf$n_block[i],
       trial = trial,
       avg_ps = avg_ps,
+      avg_ms = avg_ms,
       ms_offset = ms_offset
     )
     
